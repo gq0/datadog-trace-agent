@@ -131,6 +131,8 @@ func (r *HTTPReceiver) Listen(addr, logExtra string) error {
 		WriteTimeout: time.Second * time.Duration(timeout),
 	}
 
+	server.SetKeepAlivesEnabled(false)
+
 	log.Infof("listening for traces at http://%s%s", addr, logExtra)
 
 	go func() {
