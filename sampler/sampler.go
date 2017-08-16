@@ -48,11 +48,13 @@ type Sampler struct {
 	// signatureScoreFactor = math.Pow(signatureScoreSlope, math.Log10(scoreSamplingOffset))
 	signatureScoreFactor float64
 
+	computer SignatureComputer
+
 	exit chan struct{}
 }
 
 // NewSampler returns an initialized Sampler
-func NewSampler(extraRate float64, maxTPS float64) *Sampler {
+func NewSampler(extraRate float64, maxTPS float64, computer SignatureComputer) *Sampler {
 	decayPeriod := defaultDecayPeriod
 
 	s := &Sampler{
@@ -60,7 +62,8 @@ func NewSampler(extraRate float64, maxTPS float64) *Sampler {
 		extraRate: extraRate,
 		maxTPS:    maxTPS,
 
-		exit: make(chan struct{}),
+		computer: computer,
+		exit:     make(chan struct{}),
 	}
 
 	s.SetSignatureCoefficients(initialSignatureScoreOffset, defaultSignatureScoreSlope)
@@ -122,7 +125,7 @@ func (s *Sampler) Sample(trace model.Trace, root *model.Span, env string) bool {
 		return false
 	}
 
-	signature := ComputeSignatureWithRootAndEnv(trace, root, env)
+	signature := s.computer.ComputeSignatureWithRootAndEnv(trace, root, env)
 
 	// Update sampler state by counting this trace
 	s.Backend.CountSignature(signature)

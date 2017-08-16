@@ -43,6 +43,10 @@ const (
 	// Traces: msgpack/JSON (Content-Type) slice of traces
 	// Services: msgpack/JSON, map[string]map[string][string]
 	v03 APIVersion = "v0.3"
+	// v04
+	// Traces: msgpack/JSON (Content-Type) slice of traces + returns service sampling ratios
+	// Services: msgpack/JSON, map[string]map[string][string]
+	v04 APIVersion = "v0.4"
 )
 
 // HTTPReceiver is a collector that uses HTTP protocol and just holds
@@ -86,10 +90,12 @@ func (r *HTTPReceiver) Run() {
 	http.HandleFunc("/v0.1/services", r.httpHandleWithVersion(v01, r.handleServices))
 	http.HandleFunc("/v0.2/traces", r.httpHandleWithVersion(v02, r.handleTraces))
 	http.HandleFunc("/v0.2/services", r.httpHandleWithVersion(v02, r.handleServices))
-
-	// current collector API
 	http.HandleFunc("/v0.3/traces", r.httpHandleWithVersion(v03, r.handleTraces))
 	http.HandleFunc("/v0.3/services", r.httpHandleWithVersion(v03, r.handleServices))
+
+	// current collector API
+	http.HandleFunc("/v0.4/traces", r.httpHandleWithVersion(v04, r.handleTraces))
+	http.HandleFunc("/v0.4/services", r.httpHandleWithVersion(v04, r.handleServices))
 
 	// expvar implicitely publishes "/debug/vars" on the same port
 
@@ -168,6 +174,19 @@ func (r *HTTPReceiver) httpHandleWithVersion(v APIVersion, f func(APIVersion, ht
 	})
 }
 
+func (r *HTTPReceiver) replyTraces(v APIVersion, w http.ResponseWriter) {
+	switch v {
+	case v01:
+		fallthrough
+	case v02:
+		fallthrough
+	case v03:
+		HTTPOK(w)
+	case v04:
+		HTTPOK(w) // [TODO:christian]
+	}
+}
+
 // handleTraces knows how to handle a bunch of traces
 func (r *HTTPReceiver) handleTraces(v APIVersion, w http.ResponseWriter, req *http.Request) {
 	if !r.preSampler.Sample(req) {
@@ -180,7 +199,8 @@ func (r *HTTPReceiver) handleTraces(v APIVersion, w http.ResponseWriter, req *ht
 		return
 	}
 
-	HTTPOK(w) // We successfuly decoded the payload
+	// We successfuly decoded the payload
+	r.replyTraces(v, w)
 
 	// We parse the tags from the header
 	tags := Tags{
@@ -344,6 +364,8 @@ func getTraces(v APIVersion, w http.ResponseWriter, req *http.Request) (model.Tr
 	case v02:
 		fallthrough
 	case v03:
+		fallthrough
+	case v04:
 		if err := decodeReceiverPayload(req.Body, &traces, v, contentType); err != nil {
 			log.Errorf("cannot decode %s traces payload: %v", v, err)
 			HTTPDecodingError(err, []string{tagTraceHandler, fmt.Sprintf("v:%s", v)}, w)

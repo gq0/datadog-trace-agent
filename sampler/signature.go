@@ -1,7 +1,6 @@
 package sampler
 
 import (
-	"hash/fnv"
 	"sort"
 
 	"github.com/DataDog/datadog-trace-agent/model"
@@ -10,59 +9,13 @@ import (
 // Signature is a simple representation of trace, used to identify simlar traces
 type Signature uint64
 
-// ComputeSignatureWithRootAndEnv generates the signature of a trace knowing its root
-// Signature based on the hash of (env, service, name, resource, is_error) for the root, plus the set of
-// (env, service, name, is_error) of each span.
-func ComputeSignatureWithRootAndEnv(trace model.Trace, root *model.Span, env string) Signature {
-	rootHash := computeRootHash(*root, env)
-	spanHashes := make([]spanHash, 0, len(trace))
-
-	for i := range trace {
-		spanHashes = append(spanHashes, computeSpanHash(trace[i], env))
-	}
-
-	// Now sort, dedupe then merge all the hashes to build the signature
-	sortHashes(spanHashes)
-
-	last := spanHashes[0]
-	traceHash := last ^ rootHash
-	for i := 1; i < len(spanHashes); i++ {
-		if spanHashes[i] != last {
-			last = spanHashes[i]
-			traceHash = spanHashes[i] ^ traceHash
-		}
-	}
-
-	return Signature(traceHash)
-}
-
-// ComputeSignature is the same as ComputeSignatureWithRoot, except that it finds the root itself
-func ComputeSignature(trace model.Trace) Signature {
-	root := trace.GetRoot()
-	env := trace.GetEnv()
-
-	return ComputeSignatureWithRootAndEnv(trace, root, env)
-}
-
-func computeSpanHash(span model.Span, env string) spanHash {
-	h := fnv.New32a()
-	h.Write([]byte(env))
-	h.Write([]byte(span.Service))
-	h.Write([]byte(span.Name))
-	h.Write([]byte{byte(span.Error)})
-
-	return spanHash(h.Sum32())
-}
-
-func computeRootHash(span model.Span, env string) spanHash {
-	h := fnv.New32a()
-	h.Write([]byte(env))
-	h.Write([]byte(span.Service))
-	h.Write([]byte(span.Name))
-	h.Write([]byte(span.Resource))
-	h.Write([]byte{byte(span.Error)})
-
-	return spanHash(h.Sum32())
+// SignatureComputer is an abstraction to allow different algorithm to be used
+// by samplers, it defines signature computing methods.
+type SignatureComputer interface {
+	// ComputeSignatureWithRootAndEnv generates the signature of a trace knowing its root
+	ComputeSignatureWithRootAndEnv(trace model.Trace, root *model.Span, env string) Signature
+	// ComputeSignature is the same as ComputeSignatureWithRoot, except that it finds the root itself
+	ComputeSignature(trace model.Trace) Signature
 }
 
 // spanHash is the type of the hashes used during the computation of a signature

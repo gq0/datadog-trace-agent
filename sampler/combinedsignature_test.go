@@ -9,6 +9,9 @@ import (
 
 func TestSignatureSimilar(t *testing.T) {
 	assert := assert.New(t)
+
+	computer := &CombinedSignatureComputer{}
+
 	t1 := model.Trace{
 		model.Span{TraceID: 101, SpanID: 1011, Service: "x1", Name: "y1", Resource: "z1", Duration: 26965},
 		model.Span{TraceID: 101, SpanID: 1012, ParentID: 1011, Service: "x1", Name: "y1", Resource: "z1", Duration: 197884},
@@ -20,12 +23,14 @@ func TestSignatureSimilar(t *testing.T) {
 		model.Span{TraceID: 102, SpanID: 1022, ParentID: 1021, Service: "x1", Name: "y1", Resource: "z1", Duration: 34347},
 		model.Span{TraceID: 102, SpanID: 1023, ParentID: 1022, Service: "x2", Name: "y2", Resource: "z2", Duration: 349944},
 	}
-
-	assert.Equal(ComputeSignature(t1), ComputeSignature(t2))
+	assert.Equal(computer.ComputeSignature(t1), computer.ComputeSignature(t2))
 }
 
 func TestSignatureDifferentError(t *testing.T) {
 	assert := assert.New(t)
+
+	computer := &CombinedSignatureComputer{}
+
 	t1 := model.Trace{
 		model.Span{TraceID: 101, SpanID: 1011, Service: "x1", Name: "y1", Resource: "z1", Duration: 26965},
 		model.Span{TraceID: 101, SpanID: 1012, ParentID: 1011, Service: "x1", Name: "y1", Resource: "z1", Duration: 197884},
@@ -38,11 +43,14 @@ func TestSignatureDifferentError(t *testing.T) {
 		model.Span{TraceID: 110, SpanID: 1103, ParentID: 1101, Service: "x2", Name: "y2", Resource: "z2", Duration: 349944},
 	}
 
-	assert.NotEqual(ComputeSignature(t1), ComputeSignature(t2))
+	assert.NotEqual(computer.ComputeSignature(t1), computer.ComputeSignature(t2))
 }
 
 func TestSignatureDifferentRoot(t *testing.T) {
 	assert := assert.New(t)
+
+	computer := &CombinedSignatureComputer{}
+
 	t1 := model.Trace{
 		model.Span{TraceID: 101, SpanID: 1011, Service: "x1", Name: "y1", Resource: "z1", Duration: 26965},
 		model.Span{TraceID: 101, SpanID: 1012, ParentID: 1011, Service: "x1", Name: "y1", Resource: "z1", Duration: 197884},
@@ -55,5 +63,5 @@ func TestSignatureDifferentRoot(t *testing.T) {
 		model.Span{TraceID: 103, SpanID: 1033, ParentID: 1032, Service: "x1", Name: "y1", Resource: "z1", Duration: 152342344},
 	}
 
-	assert.NotEqual(ComputeSignature(t1), ComputeSignature(t2))
+	assert.NotEqual(computer.ComputeSignature(t1), computer.ComputeSignature(t2))
 }

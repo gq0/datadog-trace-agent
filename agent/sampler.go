@@ -49,7 +49,7 @@ func NewSampler(conf *config.AgentConfig) *Sampler {
 	return &Sampler{
 		sampledTraces: []model.Trace{},
 		traceCount:    0,
-		samplerEngine: sampler.NewSampler(conf.ExtraSampleRate, conf.MaxTPS),
+		samplerEngine: sampler.NewSampler(conf.ExtraSampleRate, conf.MaxTPS, &sampler.CombinedSignatureComputer{}),
 	}
 }
 

@@ -22,7 +22,7 @@ func getTestSampler() *Sampler {
 	extraRate := 1.0
 	maxTPS := 0.0
 
-	return NewSampler(extraRate, maxTPS)
+	return NewSampler(extraRate, maxTPS, &CombinedSignatureComputer{})
 }
 
 func getTestTrace() (model.Trace, *model.Span) {
@@ -59,7 +59,8 @@ func TestExtraSampleRate(t *testing.T) {
 
 	s := getTestSampler()
 	trace, root := getTestTrace()
-	signature := ComputeSignature(trace)
+	computer := &CombinedSignatureComputer{}
+	signature := computer.ComputeSignature(trace)
 
 	// Feed the s with a signature so that it has a < 1 sample rate
 	for i := 0; i < int(1e6); i++ {
