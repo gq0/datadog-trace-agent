@@ -30,8 +30,18 @@ const (
 	defaultSignatureScoreSlope  float64       = 3
 )
 
-// Sampler is the main component of the sampling logic
-type Sampler struct {
+// Engine is a common basic interface for sampler engines.
+type Engine interface {
+	// Run the sampler.
+	Run()
+	// Stop the sampler.
+	Stop()
+	// Sample a trace.
+	Sample(trace model.Trace, root *model.Span, env string) bool
+}
+
+// ScoreSampler is the main component of the sampling logic
+type ScoreSampler struct {
 	// Storage of the state of the sampler
 	Backend *Backend
 
@@ -49,21 +59,29 @@ type Sampler struct {
 	signatureScoreFactor float64
 
 	computer SignatureComputer
+	applier  SampleRateApplier
 
 	exit chan struct{}
 }
 
 // NewSampler returns an initialized Sampler
-func NewSampler(extraRate float64, maxTPS float64, computer SignatureComputer) *Sampler {
+func NewSampler(extraRate float64, maxTPS float64) *ScoreSampler {
+	return newGenericSampler(extraRate, maxTPS, &combinedSignatureComputer{}, &agentSampleRateApplier{})
+}
+
+// newGenericSampler returns an initialized Sampler, allowing to choose the signature computer and the sample rate applier.
+func newGenericSampler(extraRate float64, maxTPS float64, computer SignatureComputer, applier SampleRateApplier) *ScoreSampler {
 	decayPeriod := defaultDecayPeriod
 
-	s := &Sampler{
+	s := &ScoreSampler{
 		Backend:   NewBackend(decayPeriod),
 		extraRate: extraRate,
 		maxTPS:    maxTPS,
 
 		computer: computer,
-		exit:     make(chan struct{}),
+		applier:  applier,
+
+		exit: make(chan struct{}),
 	}
 
 	s.SetSignatureCoefficients(initialSignatureScoreOffset, defaultSignatureScoreSlope)
@@ -72,24 +90,24 @@ func NewSampler(extraRate float64, maxTPS float64, computer SignatureComputer) *
 }
 
 // SetSignatureCoefficients updates the internal scoring coefficients used by the signature scoring
-func (s *Sampler) SetSignatureCoefficients(offset float64, slope float64) {
+func (s *ScoreSampler) SetSignatureCoefficients(offset float64, slope float64) {
 	s.signatureScoreOffset = offset
 	s.signatureScoreSlope = slope
 	s.signatureScoreFactor = math.Pow(slope, math.Log10(offset))
 }
 
 // UpdateExtraRate updates the extra sample rate
-func (s *Sampler) UpdateExtraRate(extraRate float64) {
+func (s *ScoreSampler) UpdateExtraRate(extraRate float64) {
 	s.extraRate = extraRate
 }
 
 // UpdateMaxTPS updates the max TPS limit
-func (s *Sampler) UpdateMaxTPS(maxTPS float64) {
+func (s *ScoreSampler) UpdateMaxTPS(maxTPS float64) {
 	s.maxTPS = maxTPS
 }
 
 // Run runs and block on the Sampler main loop
-func (s *Sampler) Run() {
+func (s *ScoreSampler) Run() {
 	go func() {
 		defer watchdog.LogOnPanic()
 		s.Backend.Run()
@@ -98,13 +116,13 @@ func (s *Sampler) Run() {
 }
 
 // Stop stops the main Run loop
-func (s *Sampler) Stop() {
+func (s *ScoreSampler) Stop() {
 	s.Backend.Stop()
 	close(s.exit)
 }
 
 // RunAdjustScoring is the sampler feedback loop to adjust the scoring coefficients
-func (s *Sampler) RunAdjustScoring() {
+func (s *ScoreSampler) RunAdjustScoring() {
 	t := time.NewTicker(adjustPeriod)
 	defer t.Stop()
 
@@ -119,7 +137,7 @@ func (s *Sampler) RunAdjustScoring() {
 }
 
 // Sample counts an incoming trace and tells if it is a sample which has to be kept
-func (s *Sampler) Sample(trace model.Trace, root *model.Span, env string) bool {
+func (s *ScoreSampler) Sample(trace model.Trace, root *model.Span, env string) bool {
 	// Extra safety, just in case one trace is empty
 	if len(trace) == 0 {
 		return false
@@ -132,7 +150,7 @@ func (s *Sampler) Sample(trace model.Trace, root *model.Span, env string) bool {
 
 	sampleRate := s.GetSampleRate(trace, root, signature)
 
-	sampled := ApplySampleRate(root, sampleRate)
+	sampled := s.applier.ApplySampleRate(root, sampleRate)
 
 	if sampled {
 		// Count the trace to allow us to check for the maxTPS limit.
@@ -142,8 +160,9 @@ func (s *Sampler) Sample(trace model.Trace, root *model.Span, env string) bool {
 		// Check for the maxTPS limit, and if we require an extra sampling.
 		// No need to check if we already decided not to keep the trace.
 		maxTPSrate := s.GetMaxTPSSampleRate()
-		if maxTPSrate < 1 {
-			sampled = ApplySampleRate(root, maxTPSrate)
+		//		if maxTPSrate < 1 {
+		if maxTPSrate < sampleRate { // [TODO:christian] double-check this
+			sampled = s.applier.ApplySampleRate(root, maxTPSrate)
 		}
 	}
 
@@ -151,14 +170,14 @@ func (s *Sampler) Sample(trace model.Trace, root *model.Span, env string) bool {
 }
 
 // GetSampleRate returns the sample rate to apply to a trace.
-func (s *Sampler) GetSampleRate(trace model.Trace, root *model.Span, signature Signature) float64 {
+func (s *ScoreSampler) GetSampleRate(trace model.Trace, root *model.Span, signature Signature) float64 {
 	sampleRate := s.GetSignatureSampleRate(signature) * s.extraRate
 
 	return sampleRate
 }
 
 // GetMaxTPSSampleRate returns an extra sample rate to apply if we are above maxTPS.
-func (s *Sampler) GetMaxTPSSampleRate() float64 {
+func (s *ScoreSampler) GetMaxTPSSampleRate() float64 {
 	// When above maxTPS, apply an additional sample rate to statistically respect the limit
 	maxTPSrate := 1.0
 	if s.maxTPS > 0 {
@@ -169,18 +188,6 @@ func (s *Sampler) GetMaxTPSSampleRate() float64 {
 	}
 
 	return maxTPSrate
-}
-
-// ApplySampleRate applies a sample rate over a trace root, returning if the trace should be sampled or not.
-// It takes into account any previous sampling.
-func ApplySampleRate(root *model.Span, sampleRate float64) bool {
-	initialRate := GetTraceAppliedSampleRate(root)
-	newRate := initialRate * sampleRate
-	SetTraceAppliedSampleRate(root, newRate)
-
-	traceID := root.TraceID
-
-	return SampleByRate(traceID, newRate)
 }
 
 // GetTraceAppliedSampleRate gets the sample rate the sample rate applied earlier in the pipeline.

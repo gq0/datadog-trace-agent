@@ -19,7 +19,7 @@ type Sampler struct {
 	traceCount    int
 	lastFlush     time.Time
 
-	samplerEngine SamplerEngine
+	samplerEngine sampler.Engine
 }
 
 // samplerStats contains sampler statistics
@@ -37,19 +37,12 @@ type samplerInfo struct {
 	State sampler.InternalState
 }
 
-// SamplerEngine cares about telling if a trace is a proper sample or not
-type SamplerEngine interface {
-	Run()
-	Stop()
-	Sample(t model.Trace, root *model.Span, env string) bool
-}
-
 // NewSampler creates a new empty sampler ready to be started
 func NewSampler(conf *config.AgentConfig) *Sampler {
 	return &Sampler{
 		sampledTraces: []model.Trace{},
 		traceCount:    0,
-		samplerEngine: sampler.NewSampler(conf.ExtraSampleRate, conf.MaxTPS, &sampler.CombinedSignatureComputer{}),
+		samplerEngine: sampler.NewSampler(conf.ExtraSampleRate, conf.MaxTPS),
 	}
 }
 
@@ -91,7 +84,7 @@ func (s *Sampler) Flush() []model.Trace {
 
 	s.mu.Unlock()
 
-	state := s.samplerEngine.(*sampler.Sampler).GetState()
+	state := s.samplerEngine.(*sampler.ScoreSampler).GetState()
 	var stats samplerStats
 	if duration > 0 {
 		stats.KeptTPS = float64(len(traces)) / duration.Seconds()

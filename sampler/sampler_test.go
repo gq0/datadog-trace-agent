@@ -14,7 +14,7 @@ import (
 
 const defaultEnv = "none"
 
-func getTestSampler() *Sampler {
+func getTestSampler() *ScoreSampler {
 	// Disable debug logs in these tests
 	log.UseLogger(log.Disabled)
 
@@ -22,7 +22,7 @@ func getTestSampler() *Sampler {
 	extraRate := 1.0
 	maxTPS := 0.0
 
-	return NewSampler(extraRate, maxTPS, &CombinedSignatureComputer{})
+	return NewSampler(extraRate, maxTPS)
 }
 
 func getTestTrace() (model.Trace, *model.Span) {
@@ -59,7 +59,7 @@ func TestExtraSampleRate(t *testing.T) {
 
 	s := getTestSampler()
 	trace, root := getTestTrace()
-	computer := &CombinedSignatureComputer{}
+	computer := &combinedSignatureComputer{}
 	signature := computer.ComputeSignature(trace)
 
 	// Feed the s with a signature so that it has a < 1 sample rate
@@ -164,3 +164,6 @@ func BenchmarkSampler(b *testing.B) {
 		s.Sample(trace, &trace[0], defaultEnv)
 	}
 }
+
+// Ensure ScoreSampler implements engine.
+var testScoreSampler Engine = &ScoreSampler{}

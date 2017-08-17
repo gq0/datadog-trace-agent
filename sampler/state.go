@@ -11,7 +11,7 @@ type InternalState struct {
 }
 
 // GetState collects and return internal statistics and coefficients for indication purposes
-func (s *Sampler) GetState() InternalState {
+func (s *ScoreSampler) GetState() InternalState {
 	return InternalState{
 		s.signatureScoreOffset,
 		s.signatureScoreSlope,

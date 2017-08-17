@@ -10,7 +10,7 @@ import (
 func TestSignatureSimilar(t *testing.T) {
 	assert := assert.New(t)
 
-	computer := &CombinedSignatureComputer{}
+	computer := &combinedSignatureComputer{}
 
 	t1 := model.Trace{
 		model.Span{TraceID: 101, SpanID: 1011, Service: "x1", Name: "y1", Resource: "z1", Duration: 26965},
@@ -29,7 +29,7 @@ func TestSignatureSimilar(t *testing.T) {
 func TestSignatureDifferentError(t *testing.T) {
 	assert := assert.New(t)
 
-	computer := &CombinedSignatureComputer{}
+	computer := &combinedSignatureComputer{}
 
 	t1 := model.Trace{
 		model.Span{TraceID: 101, SpanID: 1011, Service: "x1", Name: "y1", Resource: "z1", Duration: 26965},
@@ -49,7 +49,7 @@ func TestSignatureDifferentError(t *testing.T) {
 func TestSignatureDifferentRoot(t *testing.T) {
 	assert := assert.New(t)
 
-	computer := &CombinedSignatureComputer{}
+	computer := &combinedSignatureComputer{}
 
 	t1 := model.Trace{
 		model.Span{TraceID: 101, SpanID: 1011, Service: "x1", Name: "y1", Resource: "z1", Duration: 26965},

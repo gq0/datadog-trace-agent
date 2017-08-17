@@ -6,15 +6,15 @@ import (
 	"github.com/DataDog/datadog-trace-agent/model"
 )
 
-// CombinedSignatureComputer allows signature computing using as many hints as
+// combinedSignatureComputer allows signature computing using as many hints as
 // possible to get a unique category for traces.
-type CombinedSignatureComputer struct {
+type combinedSignatureComputer struct {
 }
 
 // ComputeSignatureWithRootAndEnv generates the signature of a trace knowing its root
 // Signature based on the hash of (env, service, name, resource, is_error) for the root, plus the set of
 // (env, service, name, is_error) of each span.
-func (csc *CombinedSignatureComputer) ComputeSignatureWithRootAndEnv(trace model.Trace, root *model.Span, env string) Signature {
+func (csc *combinedSignatureComputer) ComputeSignatureWithRootAndEnv(trace model.Trace, root *model.Span, env string) Signature {
 	rootHash := computeRootHash(*root, env)
 	spanHashes := make([]spanHash, 0, len(trace))
 
@@ -38,7 +38,7 @@ func (csc *CombinedSignatureComputer) ComputeSignatureWithRootAndEnv(trace model
 }
 
 // ComputeSignature is the same as ComputeSignatureWithRoot, except that it finds the root itself
-func (csc *CombinedSignatureComputer) ComputeSignature(trace model.Trace) Signature {
+func (csc *combinedSignatureComputer) ComputeSignature(trace model.Trace) Signature {
 	root := trace.GetRoot()
 	env := trace.GetEnv()
 
