@@ -33,7 +33,7 @@ Trace Agent (v 0.99.0)
   Hostname: localhost.localdomain
   Receiver: localhost:8126
   API Endpoint: https://trace.agent.datadoghq.com
-  
+
   --- Receiver stats (1 min) ---
 
   -> tags: None
@@ -41,7 +41,7 @@ Trace Agent (v 0.99.0)
     Spans received: 0
     Services received: 0 (0 bytes)
     Total data received : 0 bytes
-    
+
   ------------------------------
 
   Bytes sent (1 min): 3591
@@ -61,21 +61,21 @@ Trace Agent (v 0.99.0)
   Hostname: localhost.localdomain
   Receiver: localhost:8126
   API Endpoint: https://trace.agent.datadoghq.com
-  
+
   --- Receiver stats (1 min) ---
 
   -> tags: python, 2.7.6, CPython, 0.9.0
-  
+
     Traces received: 70 (10679 bytes)
     Spans received: 984
     Services received: 0 (0 bytes)
     Total data received : 10679 bytes
-    
+
     WARNING: Traces dropped: 23
     WARNING: Spans dropped: 184
-    
-  ------------------------------  
-  
+
+  ------------------------------
+
   WARNING: Pre-sampling traces: 42.1 %
   WARNING: Pre-sampler: raising pre-sampling rate from 3.1 % to 5.0 %
 
