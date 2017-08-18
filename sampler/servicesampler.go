@@ -1,14 +1,7 @@
 package sampler
 
 import (
-	"time"
-
 	"github.com/DataDog/datadog-trace-agent/model"
-)
-
-const (
-	// DefaultServiceSamplerTimeout is the time after which we consider we can remove cache data.
-	DefaultServiceSamplerTimeout = time.Hour
 )
 
 // ServiceSampler is sampler that maintains a per-service sampling rate. Used in distributed tracing.
@@ -22,8 +15,7 @@ type ServiceSampler struct {
 }
 
 // NewServiceSampler returns a new service sampler.
-func NewServiceSampler(extraRate, maxTps float64) *ServiceSampler {
-	rates := NewRateByService(DefaultServiceSamplerTimeout)
+func NewServiceSampler(extraRate, maxTps float64, rates *RateByService) *ServiceSampler {
 	return &ServiceSampler{
 		Rates:   rates,
 		sampler: newGenericSampler(extraRate, maxTps, &serviceSignatureComputer{}, &clientSampleRateApplier{rates: rates}),

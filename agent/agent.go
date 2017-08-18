@@ -34,11 +34,13 @@ func (pt *processedTrace) weight() float64 {
 
 // Agent struct holds all the sub-routines structs and make the data flow between them
 type Agent struct {
-	Receiver     *HTTPReceiver
-	Concentrator *Concentrator
-	Filters      []filters.Filter
-	Sampler      *Sampler
-	Writer       *Writer
+	Receiver           *HTTPReceiver
+	Concentrator       *Concentrator
+	Filters            []filters.Filter
+	Sampler            *Sampler
+	DistributedSampler *Sampler
+	Rates              *sampler.RateByService
+	Writer             *Writer
 
 	// config
 	conf *config.AgentConfig
@@ -60,19 +62,23 @@ func NewAgent(conf *config.AgentConfig) *Agent {
 	)
 	f := filters.Setup(conf)
 	s := NewSampler(conf)
+	rates := sampler.NewRateByService(conf.DistributedSamplerTimeout)
+	ds := NewDistributedSampler(conf, rates)
 
 	w := NewWriter(conf)
 	w.inServices = r.services
 
 	return &Agent{
-		Receiver:     r,
-		Concentrator: c,
-		Filters:      f,
-		Sampler:      s,
-		Writer:       w,
-		conf:         conf,
-		exit:         exit,
-		die:          die,
+		Receiver:           r,
+		Concentrator:       c,
+		Filters:            f,
+		Sampler:            s,
+		DistributedSampler: ds,
+		Rates:              rates,
+		Writer:             w,
+		conf:               conf,
+		exit:               exit,
+		die:                die,
 	}
 }
 
@@ -93,6 +99,7 @@ func (a *Agent) Run() {
 	a.Receiver.Run()
 	a.Writer.Run()
 	a.Sampler.Run()
+	a.DistributedSampler.Run()
 
 	for {
 		select {
@@ -112,7 +119,11 @@ func (a *Agent) Run() {
 			}()
 			go func() {
 				defer watchdog.LogOnPanic()
+				// Serializing both flushes, classic agent sampler and distributed sampler,
+				// in most cases only one will be used, so in mainstream case there should
+				// be no performance issue, only in transitionnal mode can both contain data.
 				p.Traces = a.Sampler.Flush()
+				p.Traces = append(p.Traces, a.DistributedSampler.Flush()...)
 				wg.Done()
 			}()
 

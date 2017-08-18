@@ -25,7 +25,7 @@ func getTestServiceSampler() *ServiceSampler {
 	extraRate := 1.0
 	maxTPS := 0.0
 
-	return NewServiceSampler(extraRate, maxTPS)
+	return NewServiceSampler(extraRate, maxTPS, NewRateByService(time.Hour))
 }
 
 func getTestTraceWithService(t *testing.T, service string, rates *RateByService) (model.Trace, *model.Span) {

@@ -46,6 +46,15 @@ func NewSampler(conf *config.AgentConfig) *Sampler {
 	}
 }
 
+// NewDistributedSampler creates a new empty distributed sampler ready to be started
+func NewDistributedSampler(conf *config.AgentConfig, rates *sampler.RateByService) *Sampler {
+	return &Sampler{
+		sampledTraces: []model.Trace{},
+		traceCount:    0,
+		samplerEngine: sampler.NewServiceSampler(conf.ExtraSampleRate, conf.MaxTPS, rates),
+	}
+}
+
 // Run starts sampling traces
 func (s *Sampler) Run() {
 	go func() {
@@ -84,19 +93,25 @@ func (s *Sampler) Flush() []model.Trace {
 
 	s.mu.Unlock()
 
-	state := s.samplerEngine.(*sampler.ScoreSampler).GetState()
-	var stats samplerStats
-	if duration > 0 {
-		stats.KeptTPS = float64(len(traces)) / duration.Seconds()
-		stats.TotalTPS = float64(traceCount) / duration.Seconds()
+	state := s.samplerEngine.GetState()
+
+	switch state := state.(type) {
+	case sampler.InternalState:
+		var stats samplerStats
+		if duration > 0 {
+			stats.KeptTPS = float64(len(traces)) / duration.Seconds()
+			stats.TotalTPS = float64(traceCount) / duration.Seconds()
+		}
+
+		log.Debugf("flushed %d sampled traces out of %d", len(traces), traceCount)
+		log.Debugf("inTPS: %f, outTPS: %f, maxTPS: %f, offset: %f, slope: %f, cardinality: %d",
+			state.InTPS, state.OutTPS, state.MaxTPS, state.Offset, state.Slope, state.Cardinality)
+
+		// publish through expvar
+		updateSamplerInfo(samplerInfo{Stats: stats, State: state})
+	default:
+		log.Debugf("unhandled sampler engine, can't log state")
 	}
-
-	log.Debugf("flushed %d sampled traces out of %d", len(traces), traceCount)
-	log.Debugf("inTPS: %f, outTPS: %f, maxTPS: %f, offset: %f, slope: %f, cardinality: %d",
-		state.InTPS, state.OutTPS, state.MaxTPS, state.Offset, state.Slope, state.Cardinality)
-
-	// publish through expvar
-	updateSamplerInfo(samplerInfo{Stats: stats, State: state})
 
 	return traces
 }

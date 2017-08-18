@@ -38,6 +38,8 @@ type Engine interface {
 	Stop()
 	// Sample a trace.
 	Sample(trace model.Trace, root *model.Span, env string) bool
+	// GetState returns information about the sampler.
+	GetState() interface{}
 }
 
 // ScoreSampler is the main component of the sampling logic
