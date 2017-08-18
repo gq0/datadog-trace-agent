@@ -23,7 +23,7 @@ var (
 	infoReceiverStats   []tagStats    // only for the last minute
 	infoEndpointStats   endpointStats // only for the last minute
 	infoWatchdogInfo    watchdog.Info
-	infoSamplerInfo     samplerInfo
+	infoSamplerInfo     map[string]samplerInfo
 	infoPreSamplerStats sampler.PreSamplerStats
 	infoStart           = time.Now()
 	infoOnce            sync.Once
@@ -44,7 +44,7 @@ const (
   Hostname: {{.Status.Config.HostName}}
   Receiver: {{.Status.Config.ReceiverHost}}:{{.Status.Config.ReceiverPort}}
   API Endpoint: {{.Status.Config.APIEndpoint}}{{ range $i, $ts := .Status.Receiver }}
-  
+
   --- Receiver stats (1 min) ---
 
   {{if $ts.Tags.Lang}}-> tags: {{ $ts.Tags.Lang }}, {{ $ts.Tags.LangVersion }}, {{ $ts.Tags.Interpreter }}, {{ $ts.Tags.TracerVersion }}
@@ -53,12 +53,12 @@ const (
     Spans received: {{ $ts.Stats.SpansReceived }}
     Services received: {{ $ts.Stats.ServicesReceived }} ({{ $ts.Stats.ServicesBytes }} bytes)
     Total data received : {{ add $ts.Stats.TracesBytes $ts.Stats.ServicesBytes }} bytes{{if gt $ts.Stats.TracesDropped 0}}
-    
+
     WARNING: Traces dropped: {{ $ts.Stats.TracesDropped }}
     {{end}}{{if gt $ts.Stats.SpansDropped 0}}WARNING: Spans dropped: {{ $ts.Stats.SpansDropped }}{{end}}
-    
-  ------------------------------{{end}}{{if lt .Status.PreSampler.Rate 1.0}}  
-  
+
+  ------------------------------{{end}}{{if lt .Status.PreSampler.Rate 1.0}}
+
   WARNING: Pre-sampling traces: {{percent .Status.PreSampler.Rate}} %
 {{end}}{{if .Status.PreSampler.Error}}  WARNING: Pre-sampler: {{.Status.PreSampler.Error}}
 {{end}}
@@ -127,7 +127,10 @@ func publishEndpointStats() interface{} {
 
 func updateSamplerInfo(ss samplerInfo) {
 	infoMu.Lock()
-	infoSamplerInfo = ss
+	if infoSamplerInfo == nil {
+		infoSamplerInfo = make(map[string]samplerInfo, 2)
+	}
+	infoSamplerInfo[ss.EngineType] = ss
 	infoMu.Unlock()
 }
 

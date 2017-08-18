@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +22,7 @@ type Sampler struct {
 	traceCount    int
 	lastFlush     time.Time
 
+	engineType    string
 	samplerEngine sampler.Engine
 }
 
@@ -31,6 +35,8 @@ type samplerStats struct {
 }
 
 type samplerInfo struct {
+	// EngineType contains the type of the engine (tells old sampler and new distributed sampler apart)
+	EngineType string
 	// Stats contains statistics about what the sampler is doing.
 	Stats samplerStats
 	// State is the internal state of the sampler (for debugging mostly)
@@ -39,19 +45,25 @@ type samplerInfo struct {
 
 // NewSampler creates a new empty sampler ready to be started
 func NewSampler(conf *config.AgentConfig) *Sampler {
+	engine := sampler.NewSampler(conf.ExtraSampleRate, conf.MaxTPS)
+	engineType := strings.Replace(fmt.Sprint(reflect.TypeOf(engine))[1:], ".", "_", -1)
 	return &Sampler{
 		sampledTraces: []model.Trace{},
 		traceCount:    0,
-		samplerEngine: sampler.NewSampler(conf.ExtraSampleRate, conf.MaxTPS),
+		engineType:    engineType,
+		samplerEngine: engine,
 	}
 }
 
 // NewDistributedSampler creates a new empty distributed sampler ready to be started
 func NewDistributedSampler(conf *config.AgentConfig, rates *sampler.RateByService) *Sampler {
+	engine := sampler.NewServiceSampler(conf.ExtraSampleRate, conf.MaxTPS, rates)
+	engineType := strings.Replace(fmt.Sprint(reflect.TypeOf(engine))[1:], ".", "_", -1)
 	return &Sampler{
 		sampledTraces: []model.Trace{},
 		traceCount:    0,
-		samplerEngine: sampler.NewServiceSampler(conf.ExtraSampleRate, conf.MaxTPS, rates),
+		engineType:    engineType,
+		samplerEngine: engine,
 	}
 }
 
@@ -108,7 +120,7 @@ func (s *Sampler) Flush() []model.Trace {
 			state.InTPS, state.OutTPS, state.MaxTPS, state.Offset, state.Slope, state.Cardinality)
 
 		// publish through expvar
-		updateSamplerInfo(samplerInfo{Stats: stats, State: state})
+		updateSamplerInfo(samplerInfo{EngineType: s.engineType, Stats: stats, State: state})
 	default:
 		log.Debugf("unhandled sampler engine, can't log state")
 	}
