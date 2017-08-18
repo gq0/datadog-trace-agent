@@ -37,6 +37,7 @@ Trace Agent (v 0.99.0)
   --- Receiver stats (1 min) ---
 
   -> tags: None
+
     Traces received: 0 (0 bytes)
     Spans received: 0
     Services received: 0 (0 bytes)
