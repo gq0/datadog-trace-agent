@@ -15,6 +15,13 @@ const (
 	receiverErrorKey = "datadog.trace_agent.receiver.error"
 )
 
+// We encaspulate the answers in a container, this is to ease-up transition,
+// should we add another fied.
+type traceResponse struct {
+	// All the sampling rates recommended, by service
+	Rates map[string]float64 `json:"rate_by_service"`
+}
+
 // HTTPFormatError is used for payload format errors
 func HTTPFormatError(tags []string, w http.ResponseWriter) {
 	tags = append(tags, "error:format-error")
@@ -56,9 +63,11 @@ func HTTPOK(w http.ResponseWriter) {
 // HTTPRateByService outputs, as a JSON, the recommended sampling rates for all services.
 func HTTPRateByService(w http.ResponseWriter, rates *sampler.RateByService) {
 	w.WriteHeader(http.StatusOK)
-	allRates := rates.GetAll() // this is thread-safe
+	response := traceResponse{
+		Rates: rates.GetAll(), // this is thread-safe
+	}
 	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(allRates); err != nil {
+	if err := encoder.Encode(response); err != nil {
 		tags := []string{"error:response-error"}
 		statsd.Client.Count(receiverErrorKey, 1, tags, 1)
 	}
