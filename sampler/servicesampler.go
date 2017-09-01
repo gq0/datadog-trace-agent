@@ -1,6 +1,8 @@
 package sampler
 
 import (
+	"strconv"
+
 	"github.com/DataDog/datadog-trace-agent/model"
 )
 
@@ -24,7 +26,13 @@ func NewServiceSampler(extraRate, maxTps float64, rates *RateByService) *Service
 
 // Sample counts an incoming trace and tells if it is a sample which has to be kept.
 func (ss *ServiceSampler) Sample(trace model.Trace, root *model.Span, env string) bool {
-	return ss.sampler.Sample(trace, root, env)
+	// Pipe the trace through the generic sampler to update the stats, but trust
+	// the data set by the client library, which is where the decision is taken.
+	_ = ss.sampler.Sample(trace, root, env)
+	if samplingPriority, err := strconv.Atoi(root.Meta[samplingPriorityKey]); err == nil {
+		return samplingPriority > 0
+	}
+	return false
 }
 
 // Run the sampler.

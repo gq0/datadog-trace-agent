@@ -221,7 +221,7 @@ func (a *Agent) Process(t model.Trace) {
 	a.processWithSampler(t, a.Sampler)
 }
 
-// Process is the default work unit that receives a trace, transforms it and
+// ProcessDistributed is the default work unit that receives a trace, transforms it and
 // passes it downstream, this version for distributed traces
 func (a *Agent) ProcessDistributed(t model.Trace) {
 	a.processWithSampler(t, a.DistributedSampler)
