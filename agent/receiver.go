@@ -56,6 +56,7 @@ type HTTPReceiver struct {
 	distributedTraces chan model.Trace
 	services          chan model.ServicesMetadata
 	conf              *config.AgentConfig
+	rates             *sampler.RateByService
 
 	stats      *receiverStats
 	preSampler *sampler.PreSampler
@@ -67,13 +68,14 @@ type HTTPReceiver struct {
 }
 
 // NewHTTPReceiver returns a pointer to a new HTTPReceiver
-func NewHTTPReceiver(conf *config.AgentConfig) *HTTPReceiver {
+func NewHTTPReceiver(conf *config.AgentConfig, rates *sampler.RateByService) *HTTPReceiver {
 	// use buffered channels so that handlers are not waiting on downstream processing
 	return &HTTPReceiver{
 		traces:            make(chan model.Trace, 5000), // about 1000 traces/sec for 5 sec
 		distributedTraces: make(chan model.Trace, 5000), // about 1000 traces/sec for 5 sec
 		services:          make(chan model.ServicesMetadata, 50),
 		conf:              conf,
+		rates:             rates,
 		stats:             newReceiverStats(),
 		preSampler:        sampler.NewPreSampler(conf.PreSampleRate),
 		exit:              make(chan struct{}),
@@ -185,7 +187,7 @@ func (r *HTTPReceiver) replyTraces(v APIVersion, w http.ResponseWriter) {
 	case v03:
 		HTTPOK(w)
 	case v04:
-		HTTPOK(w) // [TODO:christian]
+		HTTPRateByService(w, r.rates)
 	}
 }
 

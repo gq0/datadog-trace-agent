@@ -39,7 +39,6 @@ type Agent struct {
 	Filters            []filters.Filter
 	Sampler            *Sampler
 	DistributedSampler *Sampler
-	Rates              *sampler.RateByService
 	Writer             *Writer
 
 	// config
@@ -55,14 +54,15 @@ type Agent struct {
 func NewAgent(conf *config.AgentConfig) *Agent {
 	exit := make(chan struct{})
 
-	r := NewHTTPReceiver(conf)
+	rates := sampler.NewRateByService(conf.DistributedSamplerTimeout)
+
+	r := NewHTTPReceiver(conf, rates)
 	c := NewConcentrator(
 		conf.ExtraAggregators,
 		conf.BucketInterval.Nanoseconds(),
 	)
 	f := filters.Setup(conf)
 	s := NewSampler(conf)
-	rates := sampler.NewRateByService(conf.DistributedSamplerTimeout)
 	ds := NewDistributedSampler(conf, rates)
 
 	w := NewWriter(conf)
@@ -74,7 +74,6 @@ func NewAgent(conf *config.AgentConfig) *Agent {
 		Filters:            f,
 		Sampler:            s,
 		DistributedSampler: ds,
-		Rates:              rates,
 		Writer:             w,
 		conf:               conf,
 		exit:               exit,
@@ -105,6 +104,8 @@ func (a *Agent) Run() {
 		select {
 		case t := <-a.Receiver.traces:
 			a.Process(t)
+		case t := <-a.Receiver.distributedTraces:
+			a.ProcessDistributed(t)
 		case <-flushTicker.C:
 			p := model.AgentPayload{
 				HostName: a.conf.HostName,
@@ -143,9 +144,7 @@ func (a *Agent) Run() {
 	}
 }
 
-// Process is the default work unit that receives a trace, transforms it and
-// passes it downstream
-func (a *Agent) Process(t model.Trace) {
+func (a *Agent) processWithSampler(t model.Trace, s *Sampler) {
 	if len(t) == 0 {
 		// XXX Should never happen since we reject empty traces during
 		// normalization.
@@ -212,8 +211,20 @@ func (a *Agent) Process(t model.Trace) {
 	}()
 	go func() {
 		defer watchdog.LogOnPanic()
-		a.Sampler.Add(pt)
+		s.Add(pt)
 	}()
+}
+
+// Process is the default work unit that receives a trace, transforms it and
+// passes it downstream
+func (a *Agent) Process(t model.Trace) {
+	a.processWithSampler(t, a.Sampler)
+}
+
+// Process is the default work unit that receives a trace, transforms it and
+// passes it downstream, this version for distributed traces
+func (a *Agent) ProcessDistributed(t model.Trace) {
+	a.processWithSampler(t, a.DistributedSampler)
 }
 
 func (a *Agent) watchdog() {
