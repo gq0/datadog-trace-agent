@@ -53,12 +53,14 @@ const (
     Traces received: {{ $ts.Stats.TracesReceived }} ({{ $ts.Stats.TracesBytes }} bytes)
     Spans received: {{ $ts.Stats.SpansReceived }}
     Services received: {{ $ts.Stats.ServicesReceived }} ({{ $ts.Stats.ServicesBytes }} bytes)
-    Total data received : {{ add $ts.Stats.TracesBytes $ts.Stats.ServicesBytes }} bytes{{if gt $ts.Stats.TracesDropped 0}}
+    Total data received: {{ add $ts.Stats.TracesBytes $ts.Stats.ServicesBytes }} bytes{{if gt $ts.Stats.TracesDropped 0}}
 
     WARNING: Traces dropped: {{ $ts.Stats.TracesDropped }}
     {{end}}{{if gt $ts.Stats.SpansDropped 0}}WARNING: Spans dropped: {{ $ts.Stats.SpansDropped }}{{end}}
 
-  ------------------------------{{end}}{{if lt .Status.PreSampler.Rate 1.0}}
+  ------------------------------{{end}}
+{{ range $key, $value := .Status.RateByService }}
+  Rate for '{{ $key }}': {{percent $value}} %{{ end }}{{if lt .Status.PreSampler.Rate 1.0}}
 
   WARNING: Pre-sampling traces: {{percent .Status.PreSampler.Rate}} %
 {{end}}{{if .Status.PreSampler.Error}}  WARNING: Pre-sampler: {{.Status.PreSampler.Error}}
@@ -271,12 +273,13 @@ type StatusInfo struct {
 	MemStats struct {
 		Alloc uint64
 	} `json:"memstats"`
-	Version    infoVersion             `json:"version"`
-	Receiver   []tagStats              `json:"receiver"`
-	Endpoint   endpointStats           `json:"endpoint"`
-	Watchdog   watchdog.Info           `json:"watchdog"`
-	PreSampler sampler.PreSamplerStats `json:"presampler"`
-	Config     config.AgentConfig      `json:"config"`
+	Version       infoVersion             `json:"version"`
+	Receiver      []tagStats              `json:"receiver"`
+	RateByService map[string]float64      `json:"ratebyservice"`
+	Endpoint      endpointStats           `json:"endpoint"`
+	Watchdog      watchdog.Info           `json:"watchdog"`
+	PreSampler    sampler.PreSamplerStats `json:"presampler"`
+	Config        config.AgentConfig      `json:"config"`
 }
 
 func getProgramBanner(version string) (string, string) {

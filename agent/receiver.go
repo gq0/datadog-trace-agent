@@ -334,7 +334,8 @@ func (r *HTTPReceiver) logStats() {
 			lastLog = now
 
 			// Also publish rates by service (they are updated by receiver)
-			updateRateByService(r.rates.GetAll())
+			rates := r.rates.GetAll()
+			updateRateByService(rates)
 		}
 	}
 }
