@@ -185,8 +185,10 @@ func (r *HTTPReceiver) replyTraces(v APIVersion, w http.ResponseWriter) {
 	case v02:
 		fallthrough
 	case v03:
+		// Simple response, simply acknowledge with "OK"
 		HTTPOK(w)
 	case v04:
+		// Return the recommended sampling rate for each service as a JSON.
 		HTTPRateByService(w, r.rates)
 	}
 }
