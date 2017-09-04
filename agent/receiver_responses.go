@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/DataDog/datadog-trace-agent/model"
 	"github.com/DataDog/datadog-trace-agent/sampler"
@@ -70,5 +71,11 @@ func HTTPRateByService(w http.ResponseWriter, rates *sampler.RateByService) {
 	if err := encoder.Encode(response); err != nil {
 		tags := []string{"error:response-error"}
 		statsd.Client.Count(receiverErrorKey, 1, tags, 1)
+		return
+	}
+
+	for k, v := range response.Rates {
+		tags := strings.Split(k, ",") // could be "service:myapp,env:"
+		statsd.Client.Gauge("datadog.trace_agent.sampling_rate", v, tags, 1)
 	}
 }

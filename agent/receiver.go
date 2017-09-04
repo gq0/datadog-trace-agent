@@ -332,6 +332,9 @@ func (r *HTTPReceiver) logStats() {
 			// We reset the stats accumulated during the last minute
 			accStats.reset()
 			lastLog = now
+
+			// Also publish rates by service (they are updated by receiver)
+			updateRateByService(r.rates.GetAll())
 		}
 	}
 }

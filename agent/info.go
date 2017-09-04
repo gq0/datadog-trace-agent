@@ -24,6 +24,7 @@ var (
 	infoEndpointStats   endpointStats // only for the last minute
 	infoWatchdogInfo    watchdog.Info
 	infoSamplerInfo     map[string]samplerInfo
+	infoRateByService   map[string]float64
 	infoPreSamplerStats sampler.PreSamplerStats
 	infoStart           = time.Now()
 	infoOnce            sync.Once
@@ -141,6 +142,19 @@ func publishSamplerInfo() interface{} {
 	return ss
 }
 
+func updateRateByService(rbs map[string]float64) {
+	infoMu.Lock()
+	infoRateByService = rbs
+	infoMu.Unlock()
+}
+
+func publishRateByService() interface{} {
+	infoMu.RLock()
+	rbs := infoRateByService
+	infoMu.RUnlock()
+	return rbs
+}
+
 func updateWatchdogInfo(wi watchdog.Info) {
 	infoMu.Lock()
 	infoWatchdogInfo = wi
@@ -209,6 +223,7 @@ func initInfo(conf *config.AgentConfig) error {
 		expvar.Publish("receiver", expvar.Func(publishReceiverStats))
 		expvar.Publish("endpoint", expvar.Func(publishEndpointStats))
 		expvar.Publish("sampler", expvar.Func(publishSamplerInfo))
+		expvar.Publish("ratebyservice", expvar.Func(publishRateByService))
 		expvar.Publish("watchdog", expvar.Func(publishWatchdogInfo))
 		expvar.Publish("presampler", expvar.Func(publishPreSamplerStats))
 
