@@ -69,8 +69,8 @@ func TestMaxTPSByService(t *testing.T) {
 	maxTPS := 5.0
 	tps := 100.0
 	// To avoid the edge effects from an non-initialized sampler, wait a bit before counting samples.
-	initPeriods := 20
-	periods := 50
+	initPeriods := 50
+	periods := 200
 
 	s.sampler.maxTPS = maxTPS
 	periodSeconds := s.sampler.Backend.decayPeriod.Seconds()
@@ -98,11 +98,12 @@ func TestMaxTPSByService(t *testing.T) {
 		}
 	}
 
-	// Check that the sampled score pre-maxTPS is equals to the incoming number of traces per second
-	//assert.InEpsilon(tps, s.sampler.Backend.GetSampledScore(), 0.01) // [TODO:christian] find out exactly why this is different
+	// Check that the sampled score is roughly equal to maxTPS. This is different from
+	// the score sampler test as here we run adjustscoring on a regular basis so the converges to maxTPS.
+	assert.InEpsilon(maxTPS, s.sampler.Backend.GetSampledScore(), 0.1)
 
-	// We should have kept less traces per second than maxTPS
-	//assert.InEpsilon(s.sampler.maxTPS, float64(sampledCount)/(float64(handledCount)*periodSeconds), 0.1) // [TODO:christian] find out exactly why this is different
+	// We should have keep the right percentage of traces
+	assert.InEpsilon(s.sampler.maxTPS/tps, float64(sampledCount)/float64(handledCount), 0.1)
 
 	// We should have a throughput of sampled traces around maxTPS
 	// Check for 1% epsilon, but the precision also depends on the backend imprecision (error factor = decayFactor).

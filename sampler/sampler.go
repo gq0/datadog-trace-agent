@@ -162,8 +162,7 @@ func (s *ScoreSampler) Sample(trace model.Trace, root *model.Span, env string) b
 		// Check for the maxTPS limit, and if we require an extra sampling.
 		// No need to check if we already decided not to keep the trace.
 		maxTPSrate := s.GetMaxTPSSampleRate()
-		//		if maxTPSrate < 1 {
-		if maxTPSrate < sampleRate { // [TODO:christian] double-check this
+		if maxTPSrate < 1 {
 			sampled = s.applier.ApplySampleRate(root, maxTPSrate)
 		}
 	}

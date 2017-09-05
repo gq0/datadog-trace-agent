@@ -50,5 +50,5 @@ func TestClientApplySampleRate(t *testing.T) {
 	sampled = csra.ApplySampleRate(&root, 0.5)
 	assert.False(sampled)
 	assert.Equal(0.2, root.Metrics["_sample_rate"], "sample rate should be 20% (50% of 40%)")
-	assert.Equal(map[string]float64{"service:,env:": 1, "service:mcnulty,env:": 0.5}, csra.rates.GetAll())
+	assert.Equal(map[string]float64{"service:,env:": 1, "service:mcnulty,env:": 0.2}, csra.rates.GetAll())
 }

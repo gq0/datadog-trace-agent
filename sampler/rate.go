@@ -51,8 +51,8 @@ func (csra *clientSampleRateApplier) ApplySampleRate(root *model.Span, sampleRat
 		// We only set the sampling rate for pure root spans, not for local roots
 		// part of a bigger trace in distributed tracing. There's no point in doing
 		// this because the decision comes from the caller.
-		env := root.Meta["env"]                       // caveat: won't work if env is not set on root span
-		csra.rates.Set(root.Service, env, sampleRate) // fine as RateByService is thread-safe
+		env := root.Meta["env"]                    // caveat: won't work if env is not set on root span
+		csra.rates.Set(root.Service, env, newRate) // fine as RateByService is thread-safe
 	}
 
 	return root.Metrics[samplingPriorityKey] > 0
