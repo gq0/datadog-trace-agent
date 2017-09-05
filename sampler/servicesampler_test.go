@@ -36,7 +36,7 @@ func getTestTraceWithService(t *testing.T, service string, rates *RateByService)
 	}
 	r := rand.Float64()
 	if r <= rates.Get(service, defaultEnv) {
-		trace[0].Meta[samplingPriorityKey] = "1"
+		trace[0].Metrics = map[string]float64{samplingPriorityKey: 1}
 	}
 	return trace, &trace[0]
 }

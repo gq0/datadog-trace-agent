@@ -1,13 +1,11 @@
 package sampler
 
 import (
-	"strconv"
-
 	"github.com/DataDog/datadog-trace-agent/model"
 )
 
 const (
-	samplingPriorityKey = "sampling.priority"
+	samplingPriorityKey = "_sampling_priority_v1"
 )
 
 // SampleRateApplier is an abstraction defining how a rate should be applied to traces.
@@ -38,7 +36,7 @@ type clientSampleRateApplier struct {
 // ApplySampleRate, when using client sampling, works in two steps:
 // - store the sample rate in the rates by service map, so that next time a client
 //   asks for the sampling rate for such a trace, it gest this result
-// - use the information that was in the meta tags ("sampling.priority") to
+// - use the information that was in the meta tags ("_sampling_priority_v1") to
 //   decide wether this one should be sampled or not.
 func (csra *clientSampleRateApplier) ApplySampleRate(root *model.Span, sampleRate float64) bool {
 	// In the distributed case, updating the sample rate of the span might lead
@@ -57,11 +55,5 @@ func (csra *clientSampleRateApplier) ApplySampleRate(root *model.Span, sampleRat
 		csra.rates.Set(root.Service, env, sampleRate) // fine as RateByService is thread-safe
 	}
 
-	if samplingPriority, ok := root.Meta[samplingPriorityKey]; ok {
-		if v, err := strconv.Atoi(samplingPriority); err == nil {
-			return v > 0
-		}
-	}
-
-	return false
+	return root.Metrics[samplingPriorityKey] > 0
 }

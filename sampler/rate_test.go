@@ -36,7 +36,7 @@ func TestClientApplySampleRate(t *testing.T) {
 		Duration: 100000,
 		Service:  "mcnulty",
 		Type:     "web",
-		Meta:     map[string]string{"sampling.priority": "1"},
+		Metrics:  map[string]float64{"_sampling_priority_v1": 1},
 	}
 
 	var sampled bool
@@ -46,7 +46,7 @@ func TestClientApplySampleRate(t *testing.T) {
 	assert.Equal(0.4, root.Metrics["_sample_rate"], "sample rate should be 100%")
 	assert.Equal(map[string]float64{"service:,env:": 1, "service:mcnulty,env:": 0.4}, csra.rates.GetAll())
 
-	delete(root.Meta, "sampling.priority")
+	delete(root.Metrics, "_sampling_priority_v1")
 	sampled = csra.ApplySampleRate(&root, 0.5)
 	assert.False(sampled)
 	assert.Equal(0.2, root.Metrics["_sample_rate"], "sample rate should be 20% (50% of 40%)")
