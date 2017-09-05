@@ -68,20 +68,13 @@ type ScoreSampler struct {
 
 // NewSampler returns an initialized Sampler
 func NewSampler(extraRate float64, maxTPS float64) *ScoreSampler {
-	return newGenericSampler(extraRate, maxTPS, &combinedSignatureComputer{}, &agentSampleRateApplier{})
-}
-
-// newGenericSampler returns an initialized Sampler, allowing to choose the signature computer and the sample rate applier.
-func newGenericSampler(extraRate float64, maxTPS float64, computer SignatureComputer, applier SampleRateApplier) *ScoreSampler {
-	decayPeriod := defaultDecayPeriod
-
 	s := &ScoreSampler{
-		Backend:   NewBackend(decayPeriod),
+		Backend:   NewBackend(defaultDecayPeriod),
 		extraRate: extraRate,
 		maxTPS:    maxTPS,
 
-		computer: computer,
-		applier:  applier,
+		computer: &combinedSignatureComputer{},
+		applier:  &agentSampleRateApplier{},
 
 		exit: make(chan struct{}),
 	}

@@ -15,11 +15,24 @@ type ServiceSampler struct {
 }
 
 // NewServiceSampler returns a new service sampler.
-func NewServiceSampler(extraRate, maxTps float64, rates *RateByService) *ServiceSampler {
-	return &ServiceSampler{
-		Rates:   rates,
-		sampler: newGenericSampler(extraRate, maxTps, &serviceSignatureComputer{}, &clientSampleRateApplier{rates: rates}),
+func NewServiceSampler(extraRate, maxTPS float64, rates *RateByService) *ServiceSampler {
+	s := &ServiceSampler{
+		Rates: rates,
+		sampler: &ScoreSampler{
+			Backend:   NewBackend(defaultDecayPeriod),
+			extraRate: extraRate,
+			maxTPS:    maxTPS,
+
+			computer: &serviceSignatureComputer{},
+			applier:  &clientSampleRateApplier{rates: rates},
+
+			exit: make(chan struct{}),
+		},
 	}
+
+	s.sampler.SetSignatureCoefficients(initialSignatureScoreOffset, defaultSignatureScoreSlope)
+
+	return s
 }
 
 // Sample counts an incoming trace and tells if it is a sample which has to be kept.
