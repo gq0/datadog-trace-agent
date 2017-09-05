@@ -34,12 +34,12 @@ func (pt *processedTrace) weight() float64 {
 
 // Agent struct holds all the sub-routines structs and make the data flow between them
 type Agent struct {
-	Receiver           *HTTPReceiver
-	Concentrator       *Concentrator
-	Filters            []filters.Filter
-	Sampler            *Sampler
-	DistributedSampler *Sampler
-	Writer             *Writer
+	Receiver        *HTTPReceiver
+	Concentrator    *Concentrator
+	Filters         []filters.Filter
+	Sampler         *Sampler
+	PrioritySampler *Sampler
+	Writer          *Writer
 
 	// config
 	conf *config.AgentConfig
@@ -54,7 +54,7 @@ type Agent struct {
 func NewAgent(conf *config.AgentConfig) *Agent {
 	exit := make(chan struct{})
 
-	rates := sampler.NewRateByService(conf.DistributedSamplerTimeout)
+	rates := sampler.NewRateByService(conf.PrioritySamplerTimeout)
 
 	r := NewHTTPReceiver(conf, rates)
 	c := NewConcentrator(
@@ -63,21 +63,21 @@ func NewAgent(conf *config.AgentConfig) *Agent {
 	)
 	f := filters.Setup(conf)
 	s := NewSampler(conf)
-	ds := NewDistributedSampler(conf, rates)
+	ps := NewPrioritySampler(conf, rates)
 
 	w := NewWriter(conf)
 	w.inServices = r.services
 
 	return &Agent{
-		Receiver:           r,
-		Concentrator:       c,
-		Filters:            f,
-		Sampler:            s,
-		DistributedSampler: ds,
-		Writer:             w,
-		conf:               conf,
-		exit:               exit,
-		die:                die,
+		Receiver:        r,
+		Concentrator:    c,
+		Filters:         f,
+		Sampler:         s,
+		PrioritySampler: ps,
+		Writer:          w,
+		conf:            conf,
+		exit:            exit,
+		die:             die,
 	}
 }
 
@@ -98,7 +98,7 @@ func (a *Agent) Run() {
 	a.Receiver.Run()
 	a.Writer.Run()
 	a.Sampler.Run()
-	a.DistributedSampler.Run()
+	a.PrioritySampler.Run()
 
 	for {
 		select {
@@ -124,7 +124,7 @@ func (a *Agent) Run() {
 				// in most cases only one will be used, so in mainstream case there should
 				// be no performance issue, only in transitionnal mode can both contain data.
 				p.Traces = a.Sampler.Flush()
-				p.Traces = append(p.Traces, a.DistributedSampler.Flush()...)
+				p.Traces = append(p.Traces, a.PrioritySampler.Flush()...)
 				wg.Done()
 			}()
 
@@ -224,7 +224,7 @@ func (a *Agent) Process(t model.Trace) {
 // ProcessDistributed is the default work unit that receives a trace, transforms it and
 // passes it downstream, this version for distributed traces
 func (a *Agent) ProcessDistributed(t model.Trace) {
-	a.processWithSampler(t, a.DistributedSampler)
+	a.processWithSampler(t, a.PrioritySampler)
 }
 
 func (a *Agent) watchdog() {

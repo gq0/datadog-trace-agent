@@ -50,8 +50,8 @@ func NewSampler(conf *config.AgentConfig) *Sampler {
 	}
 }
 
-// NewDistributedSampler creates a new empty distributed sampler ready to be started
-func NewDistributedSampler(conf *config.AgentConfig, rates *sampler.RateByService) *Sampler {
+// NewPrioritySampler creates a new empty distributed sampler ready to be started
+func NewPrioritySampler(conf *config.AgentConfig, rates *sampler.RateByService) *Sampler {
 	return &Sampler{
 		sampledTraces: []model.Trace{},
 		traceCount:    0,
