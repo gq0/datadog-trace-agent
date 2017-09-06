@@ -52,11 +52,10 @@ const (
 // HTTPReceiver is a collector that uses HTTP protocol and just holds
 // a chan where the spans received are sent one by one
 type HTTPReceiver struct {
-	traces            chan model.Trace
-	distributedTraces chan model.Trace
-	services          chan model.ServicesMetadata
-	conf              *config.AgentConfig
-	rates             *sampler.RateByService
+	traces   chan model.Trace
+	services chan model.ServicesMetadata
+	conf     *config.AgentConfig
+	rates    *sampler.RateByService
 
 	stats      *receiverStats
 	preSampler *sampler.PreSampler
@@ -71,14 +70,13 @@ type HTTPReceiver struct {
 func NewHTTPReceiver(conf *config.AgentConfig, rates *sampler.RateByService) *HTTPReceiver {
 	// use buffered channels so that handlers are not waiting on downstream processing
 	return &HTTPReceiver{
-		traces:            make(chan model.Trace, 5000), // about 1000 traces/sec for 5 sec
-		distributedTraces: make(chan model.Trace, 5000), // about 1000 traces/sec for 5 sec
-		services:          make(chan model.ServicesMetadata, 50),
-		conf:              conf,
-		rates:             rates,
-		stats:             newReceiverStats(),
-		preSampler:        sampler.NewPreSampler(conf.PreSampleRate),
-		exit:              make(chan struct{}),
+		traces:     make(chan model.Trace, 5000), // about 1000 traces/sec for 5 sec
+		services:   make(chan model.ServicesMetadata, 50),
+		conf:       conf,
+		rates:      rates,
+		stats:      newReceiverStats(),
+		preSampler: sampler.NewPreSampler(conf.PreSampleRate),
+		exit:       make(chan struct{}),
 
 		maxRequestBodyLength: maxRequestBodyLength,
 		debug:                strings.ToLower(conf.LogLevel) == "debug",
@@ -246,22 +244,8 @@ func (r *HTTPReceiver) handleTraces(v APIVersion, w http.ResponseWriter, req *ht
 		} else {
 			atomic.AddInt64(&ts.SpansDropped, int64(spans-len(normTrace)))
 
-			var traceChan chan model.Trace
-
-			// Put traces in different channels depending on endpoint/protocol.
-			switch v {
-			case v01:
-				fallthrough
-			case v02:
-				fallthrough
-			case v03:
-				traceChan = r.traces
-			case v04:
-				traceChan = r.distributedTraces
-			}
-
 			select {
-			case traceChan <- normTrace:
+			case r.traces <- normTrace:
 				// if our downstream consumer is slow, we drop the trace on the floor
 				// this is a safety net against us using too much memory
 				// when clients flood us

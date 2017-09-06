@@ -15,8 +15,11 @@ import (
 	"github.com/DataDog/datadog-trace-agent/watchdog"
 )
 
-const processStatsInterval = time.Minute
-const languageHeaderKey = "X-Datadog-Reported-Languages"
+const (
+	processStatsInterval = time.Minute
+	languageHeaderKey    = "X-Datadog-Reported-Languages"
+	samplingPriorityKey  = "_sampling_priority_v1"
+)
 
 type processedTrace struct {
 	Trace     model.Trace
@@ -63,7 +66,11 @@ func NewAgent(conf *config.AgentConfig) *Agent {
 	)
 	f := filters.Setup(conf)
 	ss := NewScoreSampler(conf)
-	ps := NewPrioritySampler(conf, rates)
+	var ps *Sampler
+	if conf.PrioritySampling {
+		// Use priority sampling for distributed tracing only if conf says so
+		ps = NewPrioritySampler(conf, rates)
+	}
 
 	w := NewWriter(conf)
 	w.inServices = r.services
@@ -98,14 +105,14 @@ func (a *Agent) Run() {
 	a.Receiver.Run()
 	a.Writer.Run()
 	a.ScoreSampler.Run()
-	a.PrioritySampler.Run()
+	if a.PrioritySampler != nil {
+		a.PrioritySampler.Run()
+	}
 
 	for {
 		select {
 		case t := <-a.Receiver.traces:
 			a.Process(t)
-		case t := <-a.Receiver.distributedTraces:
-			a.ProcessDistributed(t)
 		case <-flushTicker.C:
 			p := model.AgentPayload{
 				HostName: a.conf.HostName,
@@ -124,7 +131,9 @@ func (a *Agent) Run() {
 				// in most cases only one will be used, so in mainstream case there should
 				// be no performance issue, only in transitionnal mode can both contain data.
 				p.Traces = a.ScoreSampler.Flush()
-				p.Traces = append(p.Traces, a.PrioritySampler.Flush()...)
+				if a.PrioritySampler != nil {
+					p.Traces = append(p.Traces, a.PrioritySampler.Flush()...)
+				}
 				wg.Done()
 			}()
 
@@ -139,13 +148,17 @@ func (a *Agent) Run() {
 			close(a.Receiver.exit)
 			a.Writer.Stop()
 			a.ScoreSampler.Stop()
-			a.PrioritySampler.Stop()
+			if a.PrioritySampler != nil {
+				a.PrioritySampler.Stop()
+			}
 			return
 		}
 	}
 }
 
-func (a *Agent) processWithSampler(t model.Trace, s *Sampler) {
+// Process is the default work unit that receives a trace, transforms it and
+// passes it downstream.
+func (a *Agent) Process(t model.Trace) {
 	if len(t) == 0 {
 		// XXX Should never happen since we reject empty traces during
 		// normalization.
@@ -154,6 +167,17 @@ func (a *Agent) processWithSampler(t model.Trace, s *Sampler) {
 	}
 
 	root := t.GetRoot()
+
+	// We choose the sampler dynamically, depending on trace content,
+	// it has a sampling priority info (wether 0 or 1 or more) we respect
+	// this by using priority sampler. Else, use default score sampler.
+	s := a.ScoreSampler
+	if a.PrioritySampler != nil {
+		if _, ok := root.Metrics[samplingPriorityKey]; ok {
+			s = a.PrioritySampler
+		}
+	}
+
 	if root.End() < model.Now()-2*a.conf.BucketInterval.Nanoseconds() {
 		log.Errorf("skipping trace with root too far in past, root:%v", *root)
 
@@ -214,18 +238,6 @@ func (a *Agent) processWithSampler(t model.Trace, s *Sampler) {
 		defer watchdog.LogOnPanic()
 		s.Add(pt)
 	}()
-}
-
-// Process is the default work unit that receives a trace, transforms it and
-// passes it downstream
-func (a *Agent) Process(t model.Trace) {
-	a.processWithSampler(t, a.ScoreSampler)
-}
-
-// ProcessDistributed is the default work unit that receives a trace, transforms it and
-// passes it downstream, this version for distributed traces
-func (a *Agent) ProcessDistributed(t model.Trace) {
-	a.processWithSampler(t, a.PrioritySampler)
 }
 
 func (a *Agent) watchdog() {

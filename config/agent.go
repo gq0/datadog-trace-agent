@@ -41,6 +41,7 @@ type AgentConfig struct {
 	ExtraSampleRate        float64
 	PreSampleRate          float64
 	MaxTPS                 float64
+	PrioritySampling       bool
 	PrioritySamplerTimeout time.Duration
 
 	// Receiver
@@ -174,6 +175,7 @@ func NewDefaultAgentConfig() *AgentConfig {
 		ExtraSampleRate:        1.0,
 		PreSampleRate:          1.0,
 		MaxTPS:                 10,
+		PrioritySampling:       false,
 		PrioritySamplerTimeout: time.Hour,
 
 		ReceiverHost:    "localhost",
@@ -324,7 +326,10 @@ APM_CONF:
 	if v, e := conf.GetFloat("trace.sampler", "max_traces_per_second"); e == nil {
 		c.MaxTPS = v
 	}
-	if v, e := conf.GetInt("trace.sampler", "distributed_timeout"); e == nil {
+	if v := strings.ToLower(conf.GetDefault("trace.sampler", "priority_sampling", "")); v == "yes" || v == "true" {
+		c.PrioritySampling = true
+	}
+	if v, e := conf.GetInt("trace.sampler", "priority_sampler_timeout"); e == nil {
 		c.PrioritySamplerTimeout = time.Duration(v) * time.Second
 	}
 
