@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -51,7 +52,7 @@ func TestReceiverRequestBodyLength(t *testing.T) {
 		http.DefaultServeMux = defaultMux
 	}()
 
-	url := fmt.Sprintf("http://%s:%d/v0.3/traces",
+	url := fmt.Sprintf("http://%s:%d/v0.4/traces",
 		config.ReceiverHost, config.ReceiverPort)
 
 	// Before going further, make sure receiver is started
@@ -157,10 +158,13 @@ func TestReceiverJSONDecoder(t *testing.T) {
 	}{
 		{"v02 with empty content-type", NewHTTPReceiver(config, rates), v02, "", fixtures.GetTestTrace(1, 1)},
 		{"v03 with empty content-type", NewHTTPReceiver(config, rates), v03, "", fixtures.GetTestTrace(1, 1)},
+		{"v04 with empty content-type", NewHTTPReceiver(config, rates), v04, "", fixtures.GetTestTrace(1, 1)},
 		{"v02 with application/json", NewHTTPReceiver(config, rates), v02, "application/json", fixtures.GetTestTrace(1, 1)},
 		{"v03 with application/json", NewHTTPReceiver(config, rates), v03, "application/json", fixtures.GetTestTrace(1, 1)},
+		{"v04 with application/json", NewHTTPReceiver(config, rates), v04, "application/json", fixtures.GetTestTrace(1, 1)},
 		{"v02 with text/json", NewHTTPReceiver(config, rates), v02, "text/json", fixtures.GetTestTrace(1, 1)},
 		{"v03 with text/json", NewHTTPReceiver(config, rates), v03, "text/json", fixtures.GetTestTrace(1, 1)},
+		{"v04 with text/json", NewHTTPReceiver(config, rates), v04, "text/json", fixtures.GetTestTrace(1, 1)},
 	}
 
 	for _, tc := range testCases {
@@ -220,6 +224,7 @@ func TestReceiverMsgpackDecoder(t *testing.T) {
 		{"v01 with application/msgpack", NewHTTPReceiver(config, rates), v01, "application/msgpack", fixtures.GetTestTrace(1, 1)},
 		{"v02 with application/msgpack", NewHTTPReceiver(config, rates), v02, "application/msgpack", fixtures.GetTestTrace(1, 1)},
 		{"v03 with application/msgpack", NewHTTPReceiver(config, rates), v03, "application/msgpack", fixtures.GetTestTrace(1, 1)},
+		{"v04 with application/msgpack", NewHTTPReceiver(config, rates), v04, "application/msgpack", fixtures.GetTestTrace(1, 1)},
 	}
 
 	for _, tc := range testCases {
@@ -264,6 +269,34 @@ func TestReceiverMsgpackDecoder(t *testing.T) {
 				default:
 					t.Fatalf("no data received")
 				}
+
+				body, err := ioutil.ReadAll(resp.Body)
+				assert.Nil(err)
+				assert.Equal("OK\n", string(body))
+			case v04:
+				assert.Equal(200, resp.StatusCode)
+
+				// now we should be able to read the trace data
+				select {
+				case rt := <-tc.r.traces:
+					assert.Len(rt, 1)
+					span := rt[0]
+					assert.Equal(uint64(42), span.TraceID)
+					assert.Equal(uint64(52), span.SpanID)
+					assert.Equal("fennel_is_amazing", span.Service)
+					assert.Equal("something_that_should_be_a_metric", span.Name)
+					assert.Equal("NOT touched because it is going to be hashed", span.Resource)
+					assert.Equal("192.168.0.1", span.Meta["http.host"])
+					assert.Equal(41.99, span.Metrics["http.monitor"])
+				default:
+					t.Fatalf("no data received")
+				}
+
+				body, err := ioutil.ReadAll(resp.Body)
+				assert.Nil(err)
+				var tr traceResponse
+				err = json.Unmarshal(body, &tr)
+				assert.Nil(err, "the answer should be a valid JSON")
 			}
 
 			resp.Body.Close()
@@ -286,12 +319,15 @@ func TestReceiverServiceJSONDecoder(t *testing.T) {
 		{"v01 with empty content-type", NewHTTPReceiver(config, rates), v01, ""},
 		{"v02 with empty content-type", NewHTTPReceiver(config, rates), v02, ""},
 		{"v03 with empty content-type", NewHTTPReceiver(config, rates), v03, ""},
+		{"v04 with empty content-type", NewHTTPReceiver(config, rates), v04, ""},
 		{"v01 with application/json", NewHTTPReceiver(config, rates), v01, "application/json"},
 		{"v02 with application/json", NewHTTPReceiver(config, rates), v02, "application/json"},
 		{"v03 with application/json", NewHTTPReceiver(config, rates), v03, "application/json"},
+		{"v04 with application/json", NewHTTPReceiver(config, rates), v04, "application/json"},
 		{"v01 with text/json", NewHTTPReceiver(config, rates), v01, "text/json"},
 		{"v02 with text/json", NewHTTPReceiver(config, rates), v02, "text/json"},
 		{"v03 with text/json", NewHTTPReceiver(config, rates), v03, "text/json"},
+		{"v04 with text/json", NewHTTPReceiver(config, rates), v04, "text/json"},
 	}
 
 	for _, tc := range testCases {
@@ -358,6 +394,7 @@ func TestReceiverServiceMsgpackDecoder(t *testing.T) {
 		{"v01 with application/msgpack", NewHTTPReceiver(config, rates), v01, "application/msgpack"},
 		{"v02 with application/msgpack", NewHTTPReceiver(config, rates), v02, "application/msgpack"},
 		{"v03 with application/msgpack", NewHTTPReceiver(config, rates), v03, "application/msgpack"},
+		{"v04 with application/msgpack", NewHTTPReceiver(config, rates), v04, "application/msgpack"},
 	}
 
 	for _, tc := range testCases {
@@ -410,6 +447,28 @@ func TestReceiverServiceMsgpackDecoder(t *testing.T) {
 				default:
 					t.Fatalf("no data received")
 				}
+
+				body, err := ioutil.ReadAll(resp.Body)
+				assert.Nil(err)
+				assert.Equal("OK\n", string(body))
+			case v04:
+				assert.Equal(200, resp.StatusCode)
+
+				// now we should be able to read the trace data
+				select {
+				case rt := <-tc.r.services:
+					assert.Len(rt, 2)
+					assert.Equal(rt["backend"]["app"], "django")
+					assert.Equal(rt["backend"]["app_type"], "web")
+					assert.Equal(rt["database"]["app"], "postgres")
+					assert.Equal(rt["database"]["app_type"], "db")
+				default:
+					t.Fatalf("no data received")
+				}
+
+				body, err := ioutil.ReadAll(resp.Body)
+				assert.Nil(err)
+				assert.Equal("OK\n", string(body))
 			}
 
 			resp.Body.Close()
@@ -432,7 +491,7 @@ func TestHandleTraces(t *testing.T) {
 	receiver := NewHTTPReceiver(config, rates)
 
 	// response recorder
-	handler := http.HandlerFunc(receiver.httpHandleWithVersion(v03, receiver.handleTraces))
+	handler := http.HandlerFunc(receiver.httpHandleWithVersion(v04, receiver.handleTraces))
 
 	for n := 0; n < 10; n++ {
 		// consume the traces channel without doing anything
@@ -443,7 +502,7 @@ func TestHandleTraces(t *testing.T) {
 
 		// forge the request
 		rr := httptest.NewRecorder()
-		req, _ := http.NewRequest("POST", "/v0.3/traces", bytes.NewReader(buf.Bytes()))
+		req, _ := http.NewRequest("POST", "/v0.4/traces", bytes.NewReader(buf.Bytes()))
 		req.Header.Set("Content-Type", "application/msgpack")
 
 		// Add meta data to simulate data comming from multiple applications
@@ -489,7 +548,7 @@ func BenchmarkHandleTracesFromOneApp(b *testing.B) {
 	receiver := NewHTTPReceiver(config, rates)
 
 	// response recorder
-	handler := http.HandlerFunc(receiver.httpHandleWithVersion(v03, receiver.handleTraces))
+	handler := http.HandlerFunc(receiver.httpHandleWithVersion(v04, receiver.handleTraces))
 
 	// benchmark
 	b.ResetTimer()
@@ -504,7 +563,7 @@ func BenchmarkHandleTracesFromOneApp(b *testing.B) {
 
 		// forge the request
 		rr := httptest.NewRecorder()
-		req, _ := http.NewRequest("POST", "/v0.3/traces", bytes.NewReader(buf.Bytes()))
+		req, _ := http.NewRequest("POST", "/v0.4/traces", bytes.NewReader(buf.Bytes()))
 		req.Header.Set("Content-Type", "application/msgpack")
 
 		// Add meta data to simulate data comming from multiple applications
@@ -531,7 +590,7 @@ func BenchmarkHandleTracesFromMultipleApps(b *testing.B) {
 	receiver := NewHTTPReceiver(config, rates)
 
 	// response recorder
-	handler := http.HandlerFunc(receiver.httpHandleWithVersion(v03, receiver.handleTraces))
+	handler := http.HandlerFunc(receiver.httpHandleWithVersion(v04, receiver.handleTraces))
 
 	// benchmark
 	b.ResetTimer()
@@ -546,7 +605,7 @@ func BenchmarkHandleTracesFromMultipleApps(b *testing.B) {
 
 		// forge the request
 		rr := httptest.NewRecorder()
-		req, _ := http.NewRequest("POST", "/v0.3/traces", bytes.NewReader(buf.Bytes()))
+		req, _ := http.NewRequest("POST", "/v0.4/traces", bytes.NewReader(buf.Bytes()))
 		req.Header.Set("Content-Type", "application/msgpack")
 
 		// Add meta data to simulate data comming from multiple applications
