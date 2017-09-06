@@ -96,91 +96,86 @@ func publishUptime() interface{} {
 
 func updateReceiverStats(rs *receiverStats) {
 	infoMu.Lock()
-
+	defer infoMu.Unlock()
 	rs.RLock()
+	defer rs.RUnlock()
+
 	s := make([]tagStats, 0, len(rs.Stats))
 	for _, tagStats := range rs.Stats {
 		s = append(s, *tagStats)
 	}
-	rs.RUnlock()
 
 	infoReceiverStats = s
-	infoMu.Unlock()
 }
 
 func publishReceiverStats() interface{} {
 	infoMu.RLock()
-	rs := infoReceiverStats
-	infoMu.RUnlock()
-	return rs
+	defer infoMu.RUnlock()
+	return infoReceiverStats
 }
 
 func updateEndpointStats(es endpointStats) {
 	infoMu.Lock()
+	defer infoMu.Unlock()
 	infoEndpointStats = es
-	infoMu.Unlock()
 }
 
 func publishEndpointStats() interface{} {
 	infoMu.RLock()
-	es := infoEndpointStats
-	infoMu.RUnlock()
-	return es
+	defer infoMu.RUnlock()
+	return infoEndpointStats
 }
 
 func updateSamplerInfo(ss samplerInfo) {
 	infoMu.Lock()
+	defer infoMu.Unlock()
+
 	if infoSamplerInfo == nil {
 		infoSamplerInfo = make(map[string]samplerInfo, 2)
 	}
 	infoSamplerInfo[ss.EngineType] = ss
-	infoMu.Unlock()
 }
 
 func publishSamplerInfo() interface{} {
 	infoMu.RLock()
-	ss := infoSamplerInfo
-	infoMu.RUnlock()
-	return ss
+	defer infoMu.RUnlock()
+	return infoSamplerInfo
 }
 
 func updateRateByService(rbs map[string]float64) {
 	infoMu.Lock()
+	defer infoMu.Unlock()
 	infoRateByService = rbs
-	infoMu.Unlock()
 }
 
 func publishRateByService() interface{} {
 	infoMu.RLock()
-	rbs := infoRateByService
-	infoMu.RUnlock()
-	return rbs
+	defer infoMu.RUnlock()
+	return infoRateByService
 }
 
 func updateWatchdogInfo(wi watchdog.Info) {
 	infoMu.Lock()
+	defer infoMu.Unlock()
 	infoWatchdogInfo = wi
-	infoMu.Unlock()
 }
 
 func publishWatchdogInfo() interface{} {
 	infoMu.RLock()
-	wi := infoWatchdogInfo
-	infoMu.RUnlock()
-	return wi
+	defer infoMu.RUnlock()
+	return infoWatchdogInfo
 }
 
 func updatePreSampler(ss sampler.PreSamplerStats) {
 	infoMu.Lock()
+	defer infoMu.Unlock()
 	infoPreSamplerStats = ss
-	infoMu.Unlock()
 }
 
 func publishPreSamplerStats() interface{} {
 	infoMu.RLock()
-	ss := infoPreSamplerStats
-	infoMu.RUnlock()
-	return ss
+	defer infoMu.RUnlock()
+	return infoPreSamplerStats
 }
 
 type infoVersion struct {
