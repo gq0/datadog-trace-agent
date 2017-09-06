@@ -4,7 +4,6 @@ import (
 	"math"
 	"math/rand"
 	"testing"
-	"time"
 
 	log "github.com/cihub/seelog"
 
@@ -14,7 +13,7 @@ import (
 
 const defaultEnv = "none"
 
-func getTestSampler() *ScoreSampler {
+func getTestScoreSampler() *ScoreSampler {
 	// Disable debug logs in these tests
 	log.UseLogger(log.Disabled)
 
@@ -22,7 +21,7 @@ func getTestSampler() *ScoreSampler {
 	extraRate := 1.0
 	maxTPS := 0.0
 
-	return NewSampler(extraRate, maxTPS)
+	return NewScoreSampler(extraRate, maxTPS)
 }
 
 func getTestTrace() (model.Trace, *model.Span) {
@@ -34,51 +33,30 @@ func getTestTrace() (model.Trace, *model.Span) {
 	return trace, &trace[0]
 }
 
-func TestSamplerLoop(t *testing.T) {
-	s := getTestSampler()
-
-	exit := make(chan bool)
-
-	go func() {
-		s.Run()
-		close(exit)
-	}()
-
-	s.Stop()
-
-	select {
-	case <-exit:
-		return
-	case <-time.After(time.Second * 1):
-		assert.Fail(t, "Sampler took more than 1 second to close")
-	}
-}
-
 func TestExtraSampleRate(t *testing.T) {
 	assert := assert.New(t)
 
-	s := getTestSampler()
+	s := getTestScoreSampler()
 	trace, root := getTestTrace()
-	computer := &combinedSignatureComputer{}
-	signature := computer.ComputeSignature(trace)
+	signature := testComputeSignature(trace)
 
 	// Feed the s with a signature so that it has a < 1 sample rate
 	for i := 0; i < int(1e6); i++ {
 		s.Sample(trace, root, defaultEnv)
 	}
 
-	sRate := s.GetSampleRate(trace, root, signature)
+	sRate := s.sampler.GetSampleRate(trace, root, signature)
 
 	// Then turn on the extra sample rate, then ensure it affects both existing and new signatures
-	s.extraRate = 0.33
+	s.sampler.extraRate = 0.33
 
-	assert.Equal(s.GetSampleRate(trace, root, signature), s.extraRate*sRate)
+	assert.Equal(s.sampler.GetSampleRate(trace, root, signature), s.sampler.extraRate*sRate)
 }
 
 func TestMaxTPS(t *testing.T) {
 	// Test the "effectiveness" of the maxTPS option.
 	assert := assert.New(t)
-	s := getTestSampler()
+	s := getTestScoreSampler()
 
 	maxTPS := 5.0
 	tps := 100.0
@@ -86,17 +64,17 @@ func TestMaxTPS(t *testing.T) {
 	initPeriods := 20
 	periods := 50
 
-	s.maxTPS = maxTPS
-	periodSeconds := s.Backend.decayPeriod.Seconds()
+	s.sampler.maxTPS = maxTPS
+	periodSeconds := s.sampler.Backend.decayPeriod.Seconds()
 	tracesPerPeriod := tps * periodSeconds
 	// Set signature score offset high enough not to kick in during the test.
-	s.signatureScoreOffset = 2 * tps
-	s.signatureScoreFactor = math.Pow(s.signatureScoreSlope, math.Log10(s.signatureScoreOffset))
+	s.sampler.signatureScoreOffset = 2 * tps
+	s.sampler.signatureScoreFactor = math.Pow(s.sampler.signatureScoreSlope, math.Log10(s.sampler.signatureScoreOffset))
 
 	sampledCount := 0
 
 	for period := 0; period < initPeriods+periods; period++ {
-		s.Backend.DecayScore()
+		s.sampler.Backend.DecayScore()
 		for i := 0; i < int(tracesPerPeriod); i++ {
 			trace, root := getTestTrace()
 			sampled := s.Sample(trace, root, defaultEnv)
@@ -108,21 +86,21 @@ func TestMaxTPS(t *testing.T) {
 	}
 
 	// Check that the sampled score pre-maxTPS is equals to the incoming number of traces per second
-	assert.InEpsilon(tps, s.Backend.GetSampledScore(), 0.01)
+	assert.InEpsilon(tps, s.sampler.Backend.GetSampledScore(), 0.01)
 
 	// We should have kept less traces per second than maxTPS
-	assert.True(s.maxTPS >= float64(sampledCount)/(float64(periods)*periodSeconds))
+	assert.True(s.sampler.maxTPS >= float64(sampledCount)/(float64(periods)*periodSeconds))
 
 	// We should have a throughput of sampled traces around maxTPS
 	// Check for 1% epsilon, but the precision also depends on the backend imprecision (error factor = decayFactor).
 	// Combine error rates with L1-norm instead of L2-norm by laziness, still good enough for tests.
-	assert.InEpsilon(s.maxTPS, float64(sampledCount)/(float64(periods)*periodSeconds),
-		0.01+s.Backend.decayFactor-1)
+	assert.InEpsilon(s.sampler.maxTPS, float64(sampledCount)/(float64(periods)*periodSeconds),
+		0.01+s.sampler.Backend.decayFactor-1)
 }
 
 func TestSamplerChainedSampling(t *testing.T) {
 	assert := assert.New(t)
-	s := getTestSampler()
+	s := getTestScoreSampler()
 
 	trace, _ := getTestTrace()
 
@@ -133,7 +111,7 @@ func TestSamplerChainedSampling(t *testing.T) {
 	assert.Equal(0.8, GetTraceAppliedSampleRate(root))
 
 	// Sample again with an ensured rate, rates should be combined
-	s.extraRate = 0.5
+	s.sampler.extraRate = 0.5
 	s.Sample(trace, root, defaultEnv)
 	assert.Equal(0.4, GetTraceAppliedSampleRate(root))
 
@@ -142,13 +120,26 @@ func TestSamplerChainedSampling(t *testing.T) {
 	assert.Equal(0.4, GetTraceAppliedSampleRate(rootAgain))
 }
 
+func TestApplySampleRate(t *testing.T) {
+	assert := assert.New(t)
+	tID := randomTraceID()
+
+	root := model.Span{TraceID: tID, SpanID: 1, ParentID: 0, Start: 123, Duration: 100000, Service: "mcnulty", Type: "web"}
+
+	applySampleRate(&root, 0.4)
+	assert.Equal(0.4, root.Metrics["_sample_rate"], "sample rate should be 40%")
+
+	applySampleRate(&root, 0.5)
+	assert.Equal(0.2, root.Metrics["_sample_rate"], "sample rate should be 20% (50% of 40%)")
+}
+
 func BenchmarkSampler(b *testing.B) {
 	// Benchmark the resource consumption of many traces sampling
 
 	// Up to signatureCount different signatures
 	signatureCount := 20
 
-	s := getTestSampler()
+	s := getTestScoreSampler()
 
 	b.ResetTimer()
 	b.ReportAllocs()

@@ -41,12 +41,12 @@ type samplerInfo struct {
 	State sampler.InternalState
 }
 
-// NewSampler creates a new empty sampler ready to be started
-func NewSampler(conf *config.AgentConfig) *Sampler {
+// NewScoreSampler creates a new empty sampler ready to be started
+func NewScoreSampler(conf *config.AgentConfig) *Sampler {
 	return &Sampler{
 		sampledTraces: []model.Trace{},
 		traceCount:    0,
-		engine:        sampler.NewSampler(conf.ExtraSampleRate, conf.MaxTPS),
+		engine:        sampler.NewScoreSampler(conf.ExtraSampleRate, conf.MaxTPS),
 	}
 }
 
@@ -55,7 +55,7 @@ func NewPrioritySampler(conf *config.AgentConfig, rates *sampler.RateByService) 
 	return &Sampler{
 		sampledTraces: []model.Trace{},
 		traceCount:    0,
-		engine:        sampler.NewServiceSampler(conf.ExtraSampleRate, conf.MaxTPS, rates),
+		engine:        sampler.NewPrioritySampler(conf.ExtraSampleRate, conf.MaxTPS, rates),
 	}
 }
 

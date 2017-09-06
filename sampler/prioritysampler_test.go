@@ -17,7 +17,7 @@ const (
 	testServiceB = "service-b"
 )
 
-func getTestServiceSampler() *ServiceSampler {
+func getTestPrioritySampler() *PrioritySampler {
 	// Disable debug logs in these tests
 	log.UseLogger(log.Disabled)
 
@@ -25,7 +25,7 @@ func getTestServiceSampler() *ServiceSampler {
 	extraRate := 1.0
 	maxTPS := 0.0
 
-	return NewServiceSampler(extraRate, maxTPS, NewRateByService(time.Hour))
+	return NewPrioritySampler(extraRate, maxTPS, NewRateByService(time.Hour))
 }
 
 func getTestTraceWithService(t *testing.T, service string, rates *RateByService) (model.Trace, *model.Span) {
@@ -41,30 +41,37 @@ func getTestTraceWithService(t *testing.T, service string, rates *RateByService)
 	return trace, &trace[0]
 }
 
-func TestServiceSamplerLoop(t *testing.T) {
-	s := getTestServiceSampler()
+func TestUpdateSampleRateForPriority(t *testing.T) {
+	assert := assert.New(t)
+	tID := randomTraceID()
 
-	exit := make(chan bool)
-
-	go func() {
-		s.Run()
-		close(exit)
-	}()
-
-	s.Stop()
-
-	select {
-	case <-exit:
-		return
-	case <-time.After(time.Second * 1):
-		assert.Fail(t, "Sampler took more than 1 second to close")
+	rates := NewRateByService(time.Hour)
+	root := model.Span{
+		TraceID:  tID,
+		SpanID:   1,
+		ParentID: 0,
+		Start:    123,
+		Duration: 100000,
+		Service:  "mcnulty",
+		Type:     "web",
+		Metrics:  map[string]float64{"_sampling_priority_v1": 1},
 	}
+
+	updateSampleRateForPriority(&root, 0.4, rates)
+	assert.Equal(0.4, root.Metrics["_sample_rate"], "sample rate should be 100%")
+	assert.Equal(map[string]float64{"service:,env:": 1, "service:mcnulty,env:": 0.4}, rates.GetAll())
+
+	delete(root.Metrics, "_sampling_priority_v1")
+	updateSampleRateForPriority(&root, 0.5, rates)
+
+	assert.Equal(0.2, root.Metrics["_sample_rate"], "sample rate should be 20% (50% of 40%)")
+	assert.Equal(map[string]float64{"service:,env:": 1, "service:mcnulty,env:": 0.2}, rates.GetAll())
 }
 
 func TestMaxTPSByService(t *testing.T) {
 	// Test the "effectiveness" of the maxTPS option.
 	assert := assert.New(t)
-	s := getTestServiceSampler()
+	s := getTestPrioritySampler()
 
 	maxTPS := 5.0
 	tps := 100.0
@@ -86,7 +93,7 @@ func TestMaxTPSByService(t *testing.T) {
 		s.sampler.Backend.DecayScore()
 		s.sampler.AdjustScoring()
 		for i := 0; i < int(tracesPerPeriod); i++ {
-			trace, root := getTestTraceWithService(t, "service-a", s.Rates)
+			trace, root := getTestTraceWithService(t, "service-a", s.rates)
 			sampled := s.Sample(trace, root, defaultEnv)
 			// Once we got into the "supposed-to-be" stable "regime", count the samples
 			if period > initPeriods {
@@ -112,5 +119,5 @@ func TestMaxTPSByService(t *testing.T) {
 		0.01+s.sampler.Backend.decayFactor-1)
 }
 
-// Ensure ServiceSampler implements engine.
-var testServiceSampler Engine = &ServiceSampler{}
+// Ensure PrioritySampler implements engine.
+var testPrioritySampler Engine = &PrioritySampler{}

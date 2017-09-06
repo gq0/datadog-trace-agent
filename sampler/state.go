@@ -11,8 +11,7 @@ type InternalState struct {
 }
 
 // GetState collects and return internal statistics and coefficients for indication purposes
-// It returns an interface{}, as other samplers might return other informations.
-func (s *ScoreSampler) GetState() interface{} {
+func (s *coreSampler) GetState() InternalState {
 	return InternalState{
 		Offset:      s.signatureScoreOffset,
 		Slope:       s.signatureScoreSlope,
@@ -21,10 +20,4 @@ func (s *ScoreSampler) GetState() interface{} {
 		OutTPS:      s.Backend.GetSampledScore(),
 		MaxTPS:      s.maxTPS,
 	}
-}
-
-// GetState collects and return internal statistics and coefficients for indication purposes
-// It returns an interface{}, as other samplers might return other informations.
-func (s *ServiceSampler) GetState() interface{} {
-	return s.sampler.GetState()
 }

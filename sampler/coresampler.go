@@ -42,8 +42,8 @@ type Engine interface {
 	GetState() interface{}
 }
 
-// ScoreSampler is the main component of the sampling logic
-type ScoreSampler struct {
+// coreSampler is the main component of the sampling logic
+type coreSampler struct {
 	// Storage of the state of the sampler
 	Backend *Backend
 
@@ -60,21 +60,15 @@ type ScoreSampler struct {
 	// signatureScoreFactor = math.Pow(signatureScoreSlope, math.Log10(scoreSamplingOffset))
 	signatureScoreFactor float64
 
-	computer SignatureComputer
-	applier  SampleRateApplier
-
 	exit chan struct{}
 }
 
-// NewSampler returns an initialized Sampler
-func NewSampler(extraRate float64, maxTPS float64) *ScoreSampler {
-	s := &ScoreSampler{
+// newCoreSampler returns an initialized Sampler
+func newCoreSampler(extraRate float64, maxTPS float64) *coreSampler {
+	s := &coreSampler{
 		Backend:   NewBackend(defaultDecayPeriod),
 		extraRate: extraRate,
 		maxTPS:    maxTPS,
-
-		computer: &combinedSignatureComputer{},
-		applier:  &agentSampleRateApplier{},
 
 		exit: make(chan struct{}),
 	}
@@ -85,24 +79,24 @@ func NewSampler(extraRate float64, maxTPS float64) *ScoreSampler {
 }
 
 // SetSignatureCoefficients updates the internal scoring coefficients used by the signature scoring
-func (s *ScoreSampler) SetSignatureCoefficients(offset float64, slope float64) {
+func (s *coreSampler) SetSignatureCoefficients(offset float64, slope float64) {
 	s.signatureScoreOffset = offset
 	s.signatureScoreSlope = slope
 	s.signatureScoreFactor = math.Pow(slope, math.Log10(offset))
 }
 
 // UpdateExtraRate updates the extra sample rate
-func (s *ScoreSampler) UpdateExtraRate(extraRate float64) {
+func (s *coreSampler) UpdateExtraRate(extraRate float64) {
 	s.extraRate = extraRate
 }
 
 // UpdateMaxTPS updates the max TPS limit
-func (s *ScoreSampler) UpdateMaxTPS(maxTPS float64) {
+func (s *coreSampler) UpdateMaxTPS(maxTPS float64) {
 	s.maxTPS = maxTPS
 }
 
 // Run runs and block on the Sampler main loop
-func (s *ScoreSampler) Run() {
+func (s *coreSampler) Run() {
 	go func() {
 		defer watchdog.LogOnPanic()
 		s.Backend.Run()
@@ -111,13 +105,13 @@ func (s *ScoreSampler) Run() {
 }
 
 // Stop stops the main Run loop
-func (s *ScoreSampler) Stop() {
+func (s *coreSampler) Stop() {
 	s.Backend.Stop()
 	close(s.exit)
 }
 
 // RunAdjustScoring is the sampler feedback loop to adjust the scoring coefficients
-func (s *ScoreSampler) RunAdjustScoring() {
+func (s *coreSampler) RunAdjustScoring() {
 	t := time.NewTicker(adjustPeriod)
 	defer t.Stop()
 
@@ -131,47 +125,15 @@ func (s *ScoreSampler) RunAdjustScoring() {
 	}
 }
 
-// Sample counts an incoming trace and tells if it is a sample which has to be kept
-func (s *ScoreSampler) Sample(trace model.Trace, root *model.Span, env string) bool {
-	// Extra safety, just in case one trace is empty
-	if len(trace) == 0 {
-		return false
-	}
-
-	signature := s.computer.ComputeSignatureWithRootAndEnv(trace, root, env)
-
-	// Update sampler state by counting this trace
-	s.Backend.CountSignature(signature)
-
-	sampleRate := s.GetSampleRate(trace, root, signature)
-
-	sampled := s.applier.ApplySampleRate(root, sampleRate)
-
-	if sampled {
-		// Count the trace to allow us to check for the maxTPS limit.
-		// It has to happen before the maxTPS sampling.
-		s.Backend.CountSample()
-
-		// Check for the maxTPS limit, and if we require an extra sampling.
-		// No need to check if we already decided not to keep the trace.
-		maxTPSrate := s.GetMaxTPSSampleRate()
-		if maxTPSrate < 1 {
-			sampled = s.applier.ApplySampleRate(root, maxTPSrate)
-		}
-	}
-
-	return sampled
-}
-
 // GetSampleRate returns the sample rate to apply to a trace.
-func (s *ScoreSampler) GetSampleRate(trace model.Trace, root *model.Span, signature Signature) float64 {
+func (s *coreSampler) GetSampleRate(trace model.Trace, root *model.Span, signature Signature) float64 {
 	sampleRate := s.GetSignatureSampleRate(signature) * s.extraRate
 
 	return sampleRate
 }
 
 // GetMaxTPSSampleRate returns an extra sample rate to apply if we are above maxTPS.
-func (s *ScoreSampler) GetMaxTPSSampleRate() float64 {
+func (s *coreSampler) GetMaxTPSSampleRate() float64 {
 	// When above maxTPS, apply an additional sample rate to statistically respect the limit
 	maxTPSrate := 1.0
 	if s.maxTPS > 0 {

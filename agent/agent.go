@@ -37,7 +37,7 @@ type Agent struct {
 	Receiver        *HTTPReceiver
 	Concentrator    *Concentrator
 	Filters         []filters.Filter
-	Sampler         *Sampler
+	ScoreSampler    *Sampler
 	PrioritySampler *Sampler
 	Writer          *Writer
 
@@ -62,7 +62,7 @@ func NewAgent(conf *config.AgentConfig) *Agent {
 		conf.BucketInterval.Nanoseconds(),
 	)
 	f := filters.Setup(conf)
-	s := NewSampler(conf)
+	ss := NewScoreSampler(conf)
 	ps := NewPrioritySampler(conf, rates)
 
 	w := NewWriter(conf)
@@ -72,7 +72,7 @@ func NewAgent(conf *config.AgentConfig) *Agent {
 		Receiver:        r,
 		Concentrator:    c,
 		Filters:         f,
-		Sampler:         s,
+		ScoreSampler:    ss,
 		PrioritySampler: ps,
 		Writer:          w,
 		conf:            conf,
@@ -97,7 +97,7 @@ func (a *Agent) Run() {
 
 	a.Receiver.Run()
 	a.Writer.Run()
-	a.Sampler.Run()
+	a.ScoreSampler.Run()
 	a.PrioritySampler.Run()
 
 	for {
@@ -123,7 +123,7 @@ func (a *Agent) Run() {
 				// Serializing both flushes, classic agent sampler and distributed sampler,
 				// in most cases only one will be used, so in mainstream case there should
 				// be no performance issue, only in transitionnal mode can both contain data.
-				p.Traces = a.Sampler.Flush()
+				p.Traces = a.ScoreSampler.Flush()
 				p.Traces = append(p.Traces, a.PrioritySampler.Flush()...)
 				wg.Done()
 			}()
@@ -138,7 +138,8 @@ func (a *Agent) Run() {
 			log.Info("exiting")
 			close(a.Receiver.exit)
 			a.Writer.Stop()
-			a.Sampler.Stop()
+			a.ScoreSampler.Stop()
+			a.PrioritySampler.Stop()
 			return
 		}
 	}
@@ -218,7 +219,7 @@ func (a *Agent) processWithSampler(t model.Trace, s *Sampler) {
 // Process is the default work unit that receives a trace, transforms it and
 // passes it downstream
 func (a *Agent) Process(t model.Trace) {
-	a.processWithSampler(t, a.Sampler)
+	a.processWithSampler(t, a.ScoreSampler)
 }
 
 // ProcessDistributed is the default work unit that receives a trace, transforms it and
