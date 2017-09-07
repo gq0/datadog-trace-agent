@@ -37,12 +37,12 @@ func (pt *processedTrace) weight() float64 {
 
 // Agent struct holds all the sub-routines structs and make the data flow between them
 type Agent struct {
-	Receiver        *HTTPReceiver
-	Concentrator    *Concentrator
-	Filters         []filters.Filter
-	ScoreSampler    *Sampler
-	PrioritySampler *Sampler
-	Writer          *Writer
+	Receiver       *HTTPReceiver
+	Concentrator   *Concentrator
+	Filters        []filters.Filter
+	ScoreEngine    *Sampler
+	PriorityEngine *Sampler
+	Writer         *Writer
 
 	// config
 	conf *config.AgentConfig
@@ -65,26 +65,26 @@ func NewAgent(conf *config.AgentConfig) *Agent {
 		conf.BucketInterval.Nanoseconds(),
 	)
 	f := filters.Setup(conf)
-	ss := NewScoreSampler(conf)
+	ss := NewScoreEngine(conf)
 	var ps *Sampler
 	if conf.PrioritySampling {
 		// Use priority sampling for distributed tracing only if conf says so
-		ps = NewPrioritySampler(conf, rates)
+		ps = NewPriorityEngine(conf, rates)
 	}
 
 	w := NewWriter(conf)
 	w.inServices = r.services
 
 	return &Agent{
-		Receiver:        r,
-		Concentrator:    c,
-		Filters:         f,
-		ScoreSampler:    ss,
-		PrioritySampler: ps,
-		Writer:          w,
-		conf:            conf,
-		exit:            exit,
-		die:             die,
+		Receiver:       r,
+		Concentrator:   c,
+		Filters:        f,
+		ScoreEngine:    ss,
+		PriorityEngine: ps,
+		Writer:         w,
+		conf:           conf,
+		exit:           exit,
+		die:            die,
 	}
 }
 
@@ -104,9 +104,9 @@ func (a *Agent) Run() {
 
 	a.Receiver.Run()
 	a.Writer.Run()
-	a.ScoreSampler.Run()
-	if a.PrioritySampler != nil {
-		a.PrioritySampler.Run()
+	a.ScoreEngine.Run()
+	if a.PriorityEngine != nil {
+		a.PriorityEngine.Run()
 	}
 
 	for {
@@ -130,9 +130,9 @@ func (a *Agent) Run() {
 				// Serializing both flushes, classic agent sampler and distributed sampler,
 				// in most cases only one will be used, so in mainstream case there should
 				// be no performance issue, only in transitionnal mode can both contain data.
-				p.Traces = a.ScoreSampler.Flush()
-				if a.PrioritySampler != nil {
-					p.Traces = append(p.Traces, a.PrioritySampler.Flush()...)
+				p.Traces = a.ScoreEngine.Flush()
+				if a.PriorityEngine != nil {
+					p.Traces = append(p.Traces, a.PriorityEngine.Flush()...)
 				}
 				wg.Done()
 			}()
@@ -147,9 +147,9 @@ func (a *Agent) Run() {
 			log.Info("exiting")
 			close(a.Receiver.exit)
 			a.Writer.Stop()
-			a.ScoreSampler.Stop()
-			if a.PrioritySampler != nil {
-				a.PrioritySampler.Stop()
+			a.ScoreEngine.Stop()
+			if a.PriorityEngine != nil {
+				a.PriorityEngine.Stop()
 			}
 			return
 		}
@@ -171,10 +171,10 @@ func (a *Agent) Process(t model.Trace) {
 	// We choose the sampler dynamically, depending on trace content,
 	// it has a sampling priority info (wether 0 or 1 or more) we respect
 	// this by using priority sampler. Else, use default score sampler.
-	s := a.ScoreSampler
-	if a.PrioritySampler != nil {
+	s := a.ScoreEngine
+	if a.PriorityEngine != nil {
 		if _, ok := root.Metrics[samplingPriorityKey]; ok {
-			s = a.PrioritySampler
+			s = a.PriorityEngine
 		}
 	}
 

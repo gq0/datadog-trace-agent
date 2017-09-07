@@ -17,28 +17,29 @@ import (
 	"github.com/DataDog/datadog-trace-agent/model"
 )
 
-// ScoreSampler is the main component of the sampling logic
-type ScoreSampler struct {
-	sampler *coreSampler
+// ScoreEngine is the main component of the sampling logic
+type ScoreEngine struct {
+	// Sampler is the underlying sampler used by this engine, sharing logic among various engines.
+	Sampler *Sampler
 }
 
-// NewScoreSampler returns an initialized Sampler
-func NewScoreSampler(extraRate float64, maxTPS float64) *ScoreSampler {
-	s := &ScoreSampler{
-		sampler: newCoreSampler(extraRate, maxTPS),
+// NewScoreEngine returns an initialized Sampler
+func NewScoreEngine(extraRate float64, maxTPS float64) *ScoreEngine {
+	s := &ScoreEngine{
+		Sampler: newSampler(extraRate, maxTPS),
 	}
 
 	return s
 }
 
 // Run runs and block on the Sampler main loop
-func (s *ScoreSampler) Run() {
-	s.sampler.Run()
+func (s *ScoreEngine) Run() {
+	s.Sampler.Run()
 }
 
 // Stop stops the main Run loop
-func (s *ScoreSampler) Stop() {
-	s.sampler.Stop()
+func (s *ScoreEngine) Stop() {
+	s.Sampler.Stop()
 }
 
 func applySampleRate(root *model.Span, sampleRate float64) bool {
@@ -52,7 +53,7 @@ func applySampleRate(root *model.Span, sampleRate float64) bool {
 }
 
 // Sample counts an incoming trace and tells if it is a sample which has to be kept
-func (s *ScoreSampler) Sample(trace model.Trace, root *model.Span, env string) bool {
+func (s *ScoreEngine) Sample(trace model.Trace, root *model.Span, env string) bool {
 	// Extra safety, just in case one trace is empty
 	if len(trace) == 0 {
 		return false
@@ -61,20 +62,20 @@ func (s *ScoreSampler) Sample(trace model.Trace, root *model.Span, env string) b
 	signature := computeSignatureWithRootAndEnv(trace, root, env)
 
 	// Update sampler state by counting this trace
-	s.sampler.Backend.CountSignature(signature)
+	s.Sampler.Backend.CountSignature(signature)
 
-	sampleRate := s.sampler.GetSampleRate(trace, root, signature)
+	sampleRate := s.Sampler.GetSampleRate(trace, root, signature)
 
 	sampled := applySampleRate(root, sampleRate)
 
 	if sampled {
 		// Count the trace to allow us to check for the maxTPS limit.
 		// It has to happen before the maxTPS sampling.
-		s.sampler.Backend.CountSample()
+		s.Sampler.Backend.CountSample()
 
 		// Check for the maxTPS limit, and if we require an extra sampling.
 		// No need to check if we already decided not to keep the trace.
-		maxTPSrate := s.sampler.GetMaxTPSSampleRate()
+		maxTPSrate := s.Sampler.GetMaxTPSSampleRate()
 		if maxTPSrate < 1 {
 			sampled = applySampleRate(root, maxTPSrate)
 		}
@@ -85,6 +86,6 @@ func (s *ScoreSampler) Sample(trace model.Trace, root *model.Span, env string) b
 
 // GetState collects and return internal statistics and coefficients for indication purposes
 // It returns an interface{}, as other samplers might return other informations.
-func (s *ScoreSampler) GetState() interface{} {
-	return s.sampler.GetState()
+func (s *ScoreEngine) GetState() interface{} {
+	return s.Sampler.GetState()
 }

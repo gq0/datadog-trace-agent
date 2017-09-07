@@ -5,7 +5,7 @@ import (
 )
 
 // AdjustScoring modifies sampler coefficients to fit better the `maxTPS` condition
-func (s *coreSampler) AdjustScoring() {
+func (s *Sampler) AdjustScoring() {
 	currentTPS := s.Backend.GetSampledScore()
 	totalTPS := s.Backend.GetTotalScore()
 	offset := s.signatureScoreOffset

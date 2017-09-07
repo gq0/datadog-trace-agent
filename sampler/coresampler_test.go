@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func getTestCoreSampler() *coreSampler {
+func getTestSampler() *Sampler {
 	// Disable debug logs in these tests
 	log.UseLogger(log.Disabled)
 
@@ -17,11 +17,11 @@ func getTestCoreSampler() *coreSampler {
 	extraRate := 1.0
 	maxTPS := 0.0
 
-	return newCoreSampler(extraRate, maxTPS)
+	return newSampler(extraRate, maxTPS)
 }
 
 func TestSamplerLoop(t *testing.T) {
-	s := getTestCoreSampler()
+	s := getTestSampler()
 
 	exit := make(chan bool)
 

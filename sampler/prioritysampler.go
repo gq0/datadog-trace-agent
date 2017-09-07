@@ -21,16 +21,18 @@ const (
 	samplingPriorityKey = "_sampling_priority_v1"
 )
 
-// PrioritySampler is the main component of the sampling logic
-type PrioritySampler struct {
-	sampler *coreSampler
-	rates   *RateByService
+// PriorityEngine is the main component of the sampling logic
+type PriorityEngine struct {
+	// Sampler is the underlying sampler used by this engine, sharing logic among various engines.
+	Sampler *Sampler
+
+	rates *RateByService
 }
 
-// NewPrioritySampler returns an initialized Sampler
-func NewPrioritySampler(extraRate float64, maxTPS float64, rates *RateByService) *PrioritySampler {
-	s := &PrioritySampler{
-		sampler: newCoreSampler(extraRate, maxTPS),
+// NewPriorityEngine returns an initialized Sampler
+func NewPriorityEngine(extraRate float64, maxTPS float64, rates *RateByService) *PriorityEngine {
+	s := &PriorityEngine{
+		Sampler: newSampler(extraRate, maxTPS),
 		rates:   rates,
 	}
 
@@ -38,13 +40,13 @@ func NewPrioritySampler(extraRate float64, maxTPS float64, rates *RateByService)
 }
 
 // Run runs and block on the Sampler main loop
-func (s *PrioritySampler) Run() {
-	s.sampler.Run()
+func (s *PriorityEngine) Run() {
+	s.Sampler.Run()
 }
 
 // Stop stops the main Run loop
-func (s *PrioritySampler) Stop() {
-	s.sampler.Stop()
+func (s *PriorityEngine) Stop() {
+	s.Sampler.Stop()
 }
 
 func updateSampleRateForPriority(root *model.Span, sampleRate float64, rates *RateByService) {
@@ -60,7 +62,7 @@ func updateSampleRateForPriority(root *model.Span, sampleRate float64, rates *Ra
 }
 
 // Sample counts an incoming trace and tells if it is a sample which has to be kept
-func (s *PrioritySampler) Sample(trace model.Trace, root *model.Span, env string) bool {
+func (s *PriorityEngine) Sample(trace model.Trace, root *model.Span, env string) bool {
 	// Extra safety, just in case one trace is empty
 	if len(trace) == 0 {
 		return false
@@ -74,19 +76,19 @@ func (s *PrioritySampler) Sample(trace model.Trace, root *model.Span, env string
 	signature := computeServiceSignature(root, env)
 
 	// Update sampler state by counting this trace
-	s.sampler.Backend.CountSignature(signature)
+	s.Sampler.Backend.CountSignature(signature)
 
-	sampleRate := s.sampler.GetSampleRate(trace, root, signature)
+	sampleRate := s.Sampler.GetSampleRate(trace, root, signature)
 	updateSampleRateForPriority(root, sampleRate, s.rates)
 
 	if sampled {
 		// Count the trace to allow us to check for the maxTPS limit.
 		// It has to happen before the maxTPS sampling.
-		s.sampler.Backend.CountSample()
+		s.Sampler.Backend.CountSample()
 
 		// Check for the maxTPS limit, and if we require an extra sampling.
 		// No need to check if we already decided not to keep the trace.
-		maxTPSrate := s.sampler.GetMaxTPSSampleRate()
+		maxTPSrate := s.Sampler.GetMaxTPSSampleRate()
 		if maxTPSrate < 1 {
 			updateSampleRateForPriority(root, sampleRate, s.rates)
 		}
@@ -97,6 +99,6 @@ func (s *PrioritySampler) Sample(trace model.Trace, root *model.Span, env string
 
 // GetState collects and return internal statistics and coefficients for indication purposes
 // It returns an interface{}, as other samplers might return other informations.
-func (s *PrioritySampler) GetState() interface{} {
-	return s.sampler.GetState()
+func (s *PriorityEngine) GetState() interface{} {
+	return s.Sampler.GetState()
 }

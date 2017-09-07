@@ -17,7 +17,7 @@ const (
 	testServiceB = "service-b"
 )
 
-func getTestPrioritySampler() *PrioritySampler {
+func getTestPriorityEngine() *PriorityEngine {
 	// Disable debug logs in these tests
 	log.UseLogger(log.Disabled)
 
@@ -25,7 +25,7 @@ func getTestPrioritySampler() *PrioritySampler {
 	extraRate := 1.0
 	maxTPS := 0.0
 
-	return NewPrioritySampler(extraRate, maxTPS, NewRateByService(time.Hour))
+	return NewPriorityEngine(extraRate, maxTPS, NewRateByService(time.Hour))
 }
 
 func getTestTraceWithService(t *testing.T, service string, rates *RateByService) (model.Trace, *model.Span) {
@@ -71,7 +71,7 @@ func TestUpdateSampleRateForPriority(t *testing.T) {
 func TestMaxTPSByService(t *testing.T) {
 	// Test the "effectiveness" of the maxTPS option.
 	assert := assert.New(t)
-	s := getTestPrioritySampler()
+	s := getTestPriorityEngine()
 
 	maxTPS := 5.0
 	tps := 100.0
@@ -79,19 +79,19 @@ func TestMaxTPSByService(t *testing.T) {
 	initPeriods := 50
 	periods := 200
 
-	s.sampler.maxTPS = maxTPS
-	periodSeconds := s.sampler.Backend.decayPeriod.Seconds()
+	s.Sampler.maxTPS = maxTPS
+	periodSeconds := s.Sampler.Backend.decayPeriod.Seconds()
 	tracesPerPeriod := tps * periodSeconds
 	// Set signature score offset high enough not to kick in during the test.
-	s.sampler.signatureScoreOffset = 2 * tps
-	s.sampler.signatureScoreFactor = math.Pow(s.sampler.signatureScoreSlope, math.Log10(s.sampler.signatureScoreOffset))
+	s.Sampler.signatureScoreOffset = 2 * tps
+	s.Sampler.signatureScoreFactor = math.Pow(s.Sampler.signatureScoreSlope, math.Log10(s.Sampler.signatureScoreOffset))
 
 	sampledCount := 0
 	handledCount := 0
 
 	for period := 0; period < initPeriods+periods; period++ {
-		s.sampler.Backend.DecayScore()
-		s.sampler.AdjustScoring()
+		s.Sampler.Backend.DecayScore()
+		s.Sampler.AdjustScoring()
 		for i := 0; i < int(tracesPerPeriod); i++ {
 			trace, root := getTestTraceWithService(t, "service-a", s.rates)
 			sampled := s.Sample(trace, root, defaultEnv)
@@ -107,17 +107,17 @@ func TestMaxTPSByService(t *testing.T) {
 
 	// Check that the sampled score is roughly equal to maxTPS. This is different from
 	// the score sampler test as here we run adjustscoring on a regular basis so the converges to maxTPS.
-	assert.InEpsilon(maxTPS, s.sampler.Backend.GetSampledScore(), 0.1)
+	assert.InEpsilon(maxTPS, s.Sampler.Backend.GetSampledScore(), 0.1)
 
 	// We should have keep the right percentage of traces
-	assert.InEpsilon(s.sampler.maxTPS/tps, float64(sampledCount)/float64(handledCount), 0.1)
+	assert.InEpsilon(s.Sampler.maxTPS/tps, float64(sampledCount)/float64(handledCount), 0.1)
 
 	// We should have a throughput of sampled traces around maxTPS
 	// Check for 1% epsilon, but the precision also depends on the backend imprecision (error factor = decayFactor).
 	// Combine error rates with L1-norm instead of L2-norm by laziness, still good enough for tests.
-	assert.InEpsilon(s.sampler.maxTPS, float64(sampledCount)/(float64(periods)*periodSeconds),
-		0.01+s.sampler.Backend.decayFactor-1)
+	assert.InEpsilon(s.Sampler.maxTPS, float64(sampledCount)/(float64(periods)*periodSeconds),
+		0.01+s.Sampler.Backend.decayFactor-1)
 }
 
-// Ensure PrioritySampler implements engine.
-var testPrioritySampler Engine = &PrioritySampler{}
+// Ensure PriorityEngine implements engine.
+var testPriorityEngine Engine = &PriorityEngine{}

@@ -13,7 +13,7 @@ import (
 
 const defaultEnv = "none"
 
-func getTestScoreSampler() *ScoreSampler {
+func getTestScoreEngine() *ScoreEngine {
 	// Disable debug logs in these tests
 	log.UseLogger(log.Disabled)
 
@@ -21,7 +21,7 @@ func getTestScoreSampler() *ScoreSampler {
 	extraRate := 1.0
 	maxTPS := 0.0
 
-	return NewScoreSampler(extraRate, maxTPS)
+	return NewScoreEngine(extraRate, maxTPS)
 }
 
 func getTestTrace() (model.Trace, *model.Span) {
@@ -36,7 +36,7 @@ func getTestTrace() (model.Trace, *model.Span) {
 func TestExtraSampleRate(t *testing.T) {
 	assert := assert.New(t)
 
-	s := getTestScoreSampler()
+	s := getTestScoreEngine()
 	trace, root := getTestTrace()
 	signature := testComputeSignature(trace)
 
@@ -45,18 +45,18 @@ func TestExtraSampleRate(t *testing.T) {
 		s.Sample(trace, root, defaultEnv)
 	}
 
-	sRate := s.sampler.GetSampleRate(trace, root, signature)
+	sRate := s.Sampler.GetSampleRate(trace, root, signature)
 
 	// Then turn on the extra sample rate, then ensure it affects both existing and new signatures
-	s.sampler.extraRate = 0.33
+	s.Sampler.extraRate = 0.33
 
-	assert.Equal(s.sampler.GetSampleRate(trace, root, signature), s.sampler.extraRate*sRate)
+	assert.Equal(s.Sampler.GetSampleRate(trace, root, signature), s.Sampler.extraRate*sRate)
 }
 
 func TestMaxTPS(t *testing.T) {
 	// Test the "effectiveness" of the maxTPS option.
 	assert := assert.New(t)
-	s := getTestScoreSampler()
+	s := getTestScoreEngine()
 
 	maxTPS := 5.0
 	tps := 100.0
@@ -64,17 +64,17 @@ func TestMaxTPS(t *testing.T) {
 	initPeriods := 20
 	periods := 50
 
-	s.sampler.maxTPS = maxTPS
-	periodSeconds := s.sampler.Backend.decayPeriod.Seconds()
+	s.Sampler.maxTPS = maxTPS
+	periodSeconds := s.Sampler.Backend.decayPeriod.Seconds()
 	tracesPerPeriod := tps * periodSeconds
 	// Set signature score offset high enough not to kick in during the test.
-	s.sampler.signatureScoreOffset = 2 * tps
-	s.sampler.signatureScoreFactor = math.Pow(s.sampler.signatureScoreSlope, math.Log10(s.sampler.signatureScoreOffset))
+	s.Sampler.signatureScoreOffset = 2 * tps
+	s.Sampler.signatureScoreFactor = math.Pow(s.Sampler.signatureScoreSlope, math.Log10(s.Sampler.signatureScoreOffset))
 
 	sampledCount := 0
 
 	for period := 0; period < initPeriods+periods; period++ {
-		s.sampler.Backend.DecayScore()
+		s.Sampler.Backend.DecayScore()
 		for i := 0; i < int(tracesPerPeriod); i++ {
 			trace, root := getTestTrace()
 			sampled := s.Sample(trace, root, defaultEnv)
@@ -86,21 +86,21 @@ func TestMaxTPS(t *testing.T) {
 	}
 
 	// Check that the sampled score pre-maxTPS is equals to the incoming number of traces per second
-	assert.InEpsilon(tps, s.sampler.Backend.GetSampledScore(), 0.01)
+	assert.InEpsilon(tps, s.Sampler.Backend.GetSampledScore(), 0.01)
 
 	// We should have kept less traces per second than maxTPS
-	assert.True(s.sampler.maxTPS >= float64(sampledCount)/(float64(periods)*periodSeconds))
+	assert.True(s.Sampler.maxTPS >= float64(sampledCount)/(float64(periods)*periodSeconds))
 
 	// We should have a throughput of sampled traces around maxTPS
 	// Check for 1% epsilon, but the precision also depends on the backend imprecision (error factor = decayFactor).
 	// Combine error rates with L1-norm instead of L2-norm by laziness, still good enough for tests.
-	assert.InEpsilon(s.sampler.maxTPS, float64(sampledCount)/(float64(periods)*periodSeconds),
-		0.01+s.sampler.Backend.decayFactor-1)
+	assert.InEpsilon(s.Sampler.maxTPS, float64(sampledCount)/(float64(periods)*periodSeconds),
+		0.01+s.Sampler.Backend.decayFactor-1)
 }
 
 func TestSamplerChainedSampling(t *testing.T) {
 	assert := assert.New(t)
-	s := getTestScoreSampler()
+	s := getTestScoreEngine()
 
 	trace, _ := getTestTrace()
 
@@ -111,7 +111,7 @@ func TestSamplerChainedSampling(t *testing.T) {
 	assert.Equal(0.8, GetTraceAppliedSampleRate(root))
 
 	// Sample again with an ensured rate, rates should be combined
-	s.sampler.extraRate = 0.5
+	s.Sampler.extraRate = 0.5
 	s.Sample(trace, root, defaultEnv)
 	assert.Equal(0.4, GetTraceAppliedSampleRate(root))
 
@@ -139,7 +139,7 @@ func BenchmarkSampler(b *testing.B) {
 	// Up to signatureCount different signatures
 	signatureCount := 20
 
-	s := getTestScoreSampler()
+	s := getTestScoreEngine()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -156,5 +156,5 @@ func BenchmarkSampler(b *testing.B) {
 	}
 }
 
-// Ensure ScoreSampler implements engine.
-var testScoreSampler Engine = &ScoreSampler{}
+// Ensure ScoreEngine implements engine.
+var testScoreEngine Engine = &ScoreEngine{}
