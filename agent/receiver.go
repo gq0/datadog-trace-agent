@@ -121,7 +121,7 @@ func (r *HTTPReceiver) Listen(addr, logExtra string) error {
 		return fmt.Errorf("cannot create stoppable listener: %v", err)
 	}
 
-	timeout := 5 * time.Second
+	timeout := 60 * time.Second
 	if r.conf.ReceiverTimeout > 0 {
 		timeout = time.Duration(r.conf.ReceiverTimeout) * time.Second
 	}
@@ -130,6 +130,7 @@ func (r *HTTPReceiver) Listen(addr, logExtra string) error {
 		ReadTimeout:  time.Second * time.Duration(timeout),
 		WriteTimeout: time.Second * time.Duration(timeout),
 	}
+	server.SetKeepAlivesEnabled(false)
 
 	log.Infof("listening for traces at http://%s%s", addr, logExtra)
 
