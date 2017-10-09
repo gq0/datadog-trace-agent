@@ -45,42 +45,45 @@ func (rs *receiverStats) TagStats(tags Tags) *tagStats {
 
 // acc will accumulate the stats from another receiverStats struct.
 func (rs *receiverStats) acc(recent *receiverStats) {
-	recent.Lock()
+	recent.RLock()
+	defer recent.RUnlock()
+
 	for _, tagStats := range recent.Stats {
 		ts := rs.TagStats(tagStats.Tags)
 		ts.update(tagStats.Stats)
 	}
-	recent.Unlock()
 }
 
 func (rs *receiverStats) publish() {
 	rs.RLock()
+	defer rs.RUnlock()
+
 	for _, tagStats := range rs.Stats {
 		tagStats.publish()
 	}
-	rs.RUnlock()
 }
 
 func (rs *receiverStats) reset() {
 	rs.Lock()
+	defer rs.Unlock()
+
 	for _, tagStats := range rs.Stats {
 		tagStats.reset()
 	}
-	rs.Unlock()
 }
 
 // String gives a string representation of the receiverStats struct.
 func (rs *receiverStats) String() string {
-	str := ""
 	rs.RLock()
+	defer rs.RUnlock()
+
+	str := ""
 	if len(rs.Stats) == 0 {
 		return "no data received"
 	}
 	for _, ts := range rs.Stats {
 		str += fmt.Sprintf("\n\t%v -> %s", ts.Tags.toArray(), ts.String())
-
 	}
-	rs.RUnlock()
 	return str
 }
 
