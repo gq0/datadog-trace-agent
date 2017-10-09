@@ -276,21 +276,19 @@ func (r *HTTPReceiver) logStats() {
 	for now := range time.Tick(10 * time.Second) {
 		statsd.Client.Gauge("datadog.trace_agent.heartbeat", 1, []string{"version:" + Version}, 1)
 
-		// We update accStats with the new stats we collected
+		// Update accStats with the new stats we collected
 		accStats.acc(r.stats)
 
-		// Publish the stats accumulated during the last flush
+		// Publish the stats accumulated during the last flush to statsd
 		r.stats.publish()
 
-		// We reset the stats accumulated during the last 10s.
 		r.stats.reset()
 
 		if now.Sub(lastLog) >= time.Minute {
-			// We expose the stats accumulated to expvar
+			// Expose the stats accumulated to expvar
 			updateReceiverStats(accStats)
 			log.Info(accStats.String())
 
-			// We reset the stats accumulated during the last minute
 			accStats.reset()
 			lastLog = now
 		}
