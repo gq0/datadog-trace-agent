@@ -191,7 +191,7 @@ func (r *HTTPReceiver) handleTraces(v APIVersion, w http.ResponseWriter, req *ht
 	}
 
 	// We get the address of the struct holding the stats associated to the tags
-	ts := r.stats.getTagStats(tags)
+	ts := r.stats.TagStats(tags)
 
 	bytesRead := req.Body.(*model.LimitedReader).Count
 	if bytesRead > 0 {
@@ -204,7 +204,6 @@ func (r *HTTPReceiver) handleTraces(v APIVersion, w http.ResponseWriter, req *ht
 
 		atomic.AddInt64(&ts.TracesReceived, 1)
 		atomic.AddInt64(&ts.SpansReceived, int64(spans))
-
 		normTrace, err := model.NormalizeTrace(traces[i])
 		if err != nil {
 			atomic.AddInt64(&ts.TracesDropped, 1)
@@ -257,7 +256,7 @@ func (r *HTTPReceiver) handleServices(v APIVersion, w http.ResponseWriter, req *
 	}
 
 	// We get the address of the struct holding the stats associated to the tags
-	ts := r.stats.getTagStats(tags)
+	ts := r.stats.TagStats(tags)
 
 	atomic.AddInt64(&ts.ServicesReceived, int64(len(servicesMeta)))
 

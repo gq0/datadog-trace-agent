@@ -18,15 +18,18 @@ func newReceiverStats() *receiverStats {
 	return &receiverStats{sync.RWMutex{}, map[Tags]*tagStats{}}
 }
 
-// getTagStats returns the struct in which the stats will be stored depending of their tags.
-func (rs *receiverStats) getTagStats(tags Tags) *tagStats {
-	rs.Lock()
+// TagStats returns the struct in which the stats will be stored depending of their tags.
+func (rs *receiverStats) TagStats(tags Tags) *tagStats {
+	rs.RLock()
 	tagStats, ok := rs.Stats[tags]
+	rs.RUnlock()
+
 	if !ok {
 		tagStats = newTagStats(tags)
+		rs.Lock()
 		rs.Stats[tags] = tagStats
+		rs.Unlock()
 	}
-	rs.Unlock()
 
 	return tagStats
 }
@@ -35,7 +38,7 @@ func (rs *receiverStats) getTagStats(tags Tags) *tagStats {
 func (rs *receiverStats) acc(recent *receiverStats) {
 	recent.Lock()
 	for _, tagStats := range recent.Stats {
-		ts := rs.getTagStats(tagStats.Tags)
+		ts := rs.TagStats(tagStats.Tags)
 		ts.update(tagStats.Stats)
 	}
 	recent.Unlock()

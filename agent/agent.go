@@ -132,6 +132,8 @@ func (a *Agent) Run() {
 	}
 }
 
+var anyTags = Tags{}
+
 // Process is the default work unit that receives a trace, transforms it and
 // passes it downstream
 func (a *Agent) Process(t model.Trace) {
@@ -147,7 +149,7 @@ func (a *Agent) Process(t model.Trace) {
 		log.Errorf("skipping trace with root too far in past, root:%v", *root)
 
 		// We get the address of the struct holding the stats associated to the tags
-		ts := a.Receiver.stats.getTagStats(Tags{})
+		ts := a.Receiver.stats.TagStats(anyTags)
 
 		atomic.AddInt64(&ts.TracesDropped, 1)
 		atomic.AddInt64(&ts.SpansDropped, int64(len(t)))
@@ -160,7 +162,7 @@ func (a *Agent) Process(t model.Trace) {
 		}
 
 		log.Debugf("rejecting trace by filter: %T  %v", f, *root)
-		ts := a.Receiver.stats.getTagStats(Tags{})
+		ts := a.Receiver.stats.TagStats(anyTags)
 		atomic.AddInt64(&ts.TracesFiltered, 1)
 		atomic.AddInt64(&ts.SpansFiltered, int64(len(t)))
 
