@@ -14,8 +14,17 @@ type receiverStats struct {
 	Stats map[Tags]*tagStats
 }
 
+// Tags holds the tags we parse when we handle the header of the payload.
+type Tags struct {
+	Lang, LangVersion, Interpreter, TracerVersion string
+}
+
+var anyTags = Tags{}
+
 func newReceiverStats() *receiverStats {
-	return &receiverStats{sync.RWMutex{}, map[Tags]*tagStats{}}
+	return &receiverStats{sync.RWMutex{}, map[Tags]*tagStats{
+		anyTags: newTagStats(anyTags),
+	}}
 }
 
 // TagStats returns the struct in which the stats will be stored depending of their tags.
@@ -172,11 +181,6 @@ func (s *Stats) String() string {
 	return fmt.Sprintf("traces received: %v, traces dropped: %v, traces filtered: %v, "+
 		"traces amount: %v bytes, services received: %v, services amount: %v bytes",
 		tracesReceived, tracesDropped, tracesFiltered, tracesBytes, servicesReceived, servicesBytes)
-}
-
-// Tags holds the tags we parse when we handle the header of the payload.
-type Tags struct {
-	Lang, LangVersion, Interpreter, TracerVersion string
 }
 
 // toArray will transform the Tags struct into a slice of string.
