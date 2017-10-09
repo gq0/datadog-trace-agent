@@ -53,11 +53,13 @@ func (rs *receiverStats) publish() {
 }
 
 func (rs *receiverStats) reset() {
-	rs.Lock()
-	for _, tagStats := range rs.Stats {
+	rs.RLock()
+	ts := rs.Stats
+	rs.RUnlock()
+
+	for _, tagStats := range ts {
 		tagStats.reset()
 	}
-	rs.Unlock()
 }
 
 // String gives a string representation of the receiverStats struct.
