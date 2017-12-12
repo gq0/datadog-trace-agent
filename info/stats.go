@@ -2,6 +2,7 @@ package info
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 
@@ -47,6 +48,25 @@ func (rs *ReceiverStats) Publish() {
 		tagStats.publish()
 	}
 	rs.RUnlock()
+}
+
+// Languages returns the set of languages reporting traces to the Agent.
+func (rs *ReceiverStats) Languages() []string {
+	langSet := make(map[string]bool)
+	langs := []string{}
+
+	rs.RLock()
+	for tags := range rs.Stats {
+		if _, ok := langSet[tags.Lang]; !ok {
+			langs = append(langs, tags.Lang)
+			langSet[tags.Lang] = true
+		}
+	}
+	rs.RUnlock()
+
+	sort.Strings(langs)
+
+	return langs
 }
 
 func (rs *ReceiverStats) Reset() {

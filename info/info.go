@@ -20,6 +20,7 @@ import (
 
 var (
 	infoMu              sync.RWMutex
+	languages           []string
 	receiverStats       []tagStats    // only for the last minute
 	endpointStats       EndpointStats // only for the last minute
 	watchdogInfo        watchdog.Info
@@ -105,6 +106,14 @@ func UpdateReceiverStats(rs *ReceiverStats) {
 	}
 
 	receiverStats = s
+	languages = rs.Languages()
+}
+
+func Languages() []string {
+	infoMu.Lock()
+	defer infoMu.Unlock()
+
+	return languages
 }
 
 func publishReceiverStats() interface{} {
