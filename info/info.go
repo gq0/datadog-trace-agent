@@ -21,7 +21,7 @@ import (
 var (
 	infoMu              sync.RWMutex
 	languages           []string
-	receiverStats       []tagStats    // only for the last minute
+	receiverStats       []TagStats    // only for the last minute
 	endpointStats       EndpointStats // only for the last minute
 	watchdogInfo        watchdog.Info
 	samplerInfo         SamplerInfo
@@ -92,13 +92,14 @@ const (
 `
 )
 
+// UpdateReceiverStats updates internal stats about the receiver
 func UpdateReceiverStats(rs *ReceiverStats) {
 	infoMu.Lock()
 	defer infoMu.Unlock()
 	rs.RLock()
 	defer rs.RUnlock()
 
-	s := make([]tagStats, 0, len(rs.Stats))
+	s := make([]TagStats, 0, len(rs.Stats))
 	for _, tagStats := range rs.Stats {
 		if !tagStats.isEmpty() {
 			s = append(s, *tagStats)
@@ -122,6 +123,7 @@ func publishReceiverStats() interface{} {
 	return receiverStats
 }
 
+// UpdateEndpointStats updates internal stats about API endpoints
 func UpdateEndpointStats(es EndpointStats) {
 	infoMu.Lock()
 	defer infoMu.Unlock()
@@ -134,6 +136,7 @@ func publishEndpointStats() interface{} {
 	return endpointStats
 }
 
+// UpdateSamplerInfo updates internal stats about signature sampling
 func UpdateSamplerInfo(ss SamplerInfo) {
 	infoMu.Lock()
 	defer infoMu.Unlock()
@@ -147,6 +150,7 @@ func publishSamplerInfo() interface{} {
 	return samplerInfo
 }
 
+// UpdatePrioritySamplerInfo updates internal stats about priority sampking
 func UpdatePrioritySamplerInfo(ss SamplerInfo) {
 	infoMu.Lock()
 	defer infoMu.Unlock()
@@ -160,6 +164,7 @@ func publishPrioritySamplerInfo() interface{} {
 	return prioritySamplerInfo
 }
 
+// UpdateRateByService updates the RateByService map
 func UpdateRateByService(rbs map[string]float64) {
 	infoMu.Lock()
 	defer infoMu.Unlock()
@@ -172,6 +177,7 @@ func publishRateByService() interface{} {
 	return rateByService
 }
 
+// UpdateWatchdogInfo updates internal stats about the watchdog
 func UpdateWatchdogInfo(wi watchdog.Info) {
 	infoMu.Lock()
 	defer infoMu.Unlock()
@@ -184,6 +190,7 @@ func publishWatchdogInfo() interface{} {
 	return watchdogInfo
 }
 
+// UpdatePreSampler updates internal stats about the pre-sampling
 func UpdatePreSampler(ss sampler.PreSamplerStats) {
 	infoMu.Lock()
 	defer infoMu.Unlock()
@@ -274,7 +281,7 @@ type StatusInfo struct {
 		Alloc uint64
 	} `json:"memstats"`
 	Version       infoVersion             `json:"version"`
-	Receiver      []tagStats              `json:"receiver"`
+	Receiver      []TagStats              `json:"receiver"`
 	RateByService map[string]float64      `json:"ratebyservice"`
 	Endpoint      EndpointStats           `json:"endpoint"`
 	Watchdog      watchdog.Info           `json:"watchdog"`
