@@ -1,7 +1,6 @@
 package main
 
 import (
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 
 const (
 	processStatsInterval = time.Minute
-	languageHeaderKey    = "X-Datadog-Reported-Languages"
 	samplingPriorityKey  = "_sampling_priority_v1"
 )
 
@@ -40,12 +38,14 @@ func (pt *processedTrace) weight() float64 {
 
 // Agent struct holds all the sub-routines structs and make the data flow between them
 type Agent struct {
-	Receiver       *HTTPReceiver
-	Concentrator   *Concentrator
-	Filters        []filters.Filter
-	ScoreEngine    *Sampler
-	PriorityEngine *Sampler
-	Writer         *writer.Writer
+	Receiver        *HTTPReceiver
+	Concentrator    *Concentrator
+	Filters         []filters.Filter
+	ScoreSampler    *Sampler
+	PrioritySampler *Sampler
+	TraceWriter     *writer.TraceWriter
+	ServiceWriter   *writer.ServiceWriter
+	StatsWriter     *writer.StatsWriter
 
 	// config
 	conf    *config.AgentConfig
@@ -60,43 +60,59 @@ type Agent struct {
 // NewAgent returns a new Agent object, ready to be started
 func NewAgent(conf *config.AgentConfig, exit chan struct{}) *Agent {
 	dynConf := config.NewDynamicConfig()
-	r := NewHTTPReceiver(conf, dynConf)
+
+	// inter-component channels
+	rawTraceChan := make(chan model.Trace, 5000) // about 1000 traces/sec for 5 sec, TODO: move to *model.Trace
+	sampledTraceChan := make(chan *model.Trace)
+	analyzedTransactionChan := make(chan *model.Span)
+	statsChan := make(chan []model.StatsBucket)
+	serviceChan := make(chan model.ServicesMetadata, 50)
+
+	// create components
+	r := NewHTTPReceiver(conf, dynConf, rawTraceChan, serviceChan)
 	c := NewConcentrator(
 		conf.ExtraAggregators,
 		conf.BucketInterval.Nanoseconds(),
+		statsChan,
 	)
 	f := filters.Setup(conf)
-	ss := NewScoreEngine(conf)
+
+	ss := NewScoreSampler(conf, sampledTraceChan, analyzedTransactionChan)
 	var ps *Sampler
 	if conf.PrioritySampling {
 		// Use priority sampling for distributed tracing only if conf says so
-		ps = NewPriorityEngine(conf, dynConf)
+		// TODO: remove the option once comfortable ; as it is true by default.
+		ps = NewPrioritySampler(conf, dynConf, sampledTraceChan, analyzedTransactionChan)
 	}
+	tw := writer.NewTraceWriter(conf, sampledTraceChan, analyzedTransactionChan)
+	sw := writer.NewStatsWriter(conf, statsChan)
+	svcW := writer.NewServiceWriter(conf, serviceChan)
 
-	w := writer.NewWriter(conf)
-	w.InServices = r.services
+	// wire components together
+	tw.InTraces = sampledTraceChan
+	sw.InStats = statsChan
+	svcW.InServices = serviceChan
 
 	return &Agent{
-		Receiver:       r,
-		Concentrator:   c,
-		Filters:        f,
-		ScoreEngine:    ss,
-		PriorityEngine: ps,
-		Writer:         w,
-		conf:           conf,
-		dynConf:        dynConf,
-		exit:           exit,
-		die:            die,
+		Receiver:        r,
+		Concentrator:    c,
+		Filters:         f,
+		ScoreSampler:    ss,
+		PrioritySampler: ps,
+		TraceWriter:     tw,
+		StatsWriter:     sw,
+		ServiceWriter:   svcW,
+		conf:            conf,
+		dynConf:         dynConf,
+		exit:            exit,
+		die:             die,
 	}
 }
 
 // Run starts routers routines and individual pieces then stop them when the exit order is received
 func (a *Agent) Run() {
-	flushTicker := time.NewTicker(a.conf.BucketInterval)
-	defer flushTicker.Stop()
-
 	// it's really important to use a ticker for this, and with a not too short
-	// interval, for this is our garantee that the process won't start and kill
+	// interval, for this is our guarantee that the process won't start and kill
 	// itself too fast (nightmare loop)
 	watchdogTicker := time.NewTicker(a.conf.WatchdogInterval)
 	defer watchdogTicker.Stop()
@@ -104,54 +120,34 @@ func (a *Agent) Run() {
 	// update the data served by expvar so that we don't expose a 0 sample rate
 	info.UpdatePreSampler(*a.Receiver.preSampler.Stats())
 
+	// TODO: unify components APIs. Use Start/Stop as non-blocking ways of controlling the blocking Run loop.
+	// Like we do with TraceWriter.
 	a.Receiver.Run()
-	a.Writer.Run()
-	a.ScoreEngine.Run()
-	if a.PriorityEngine != nil {
-		a.PriorityEngine.Run()
+	a.TraceWriter.Start()
+	a.StatsWriter.Start()
+	a.ServiceWriter.Start()
+	a.Concentrator.Start()
+	a.ScoreSampler.Run()
+	if a.PrioritySampler != nil {
+		a.PrioritySampler.Run()
 	}
 
 	for {
 		select {
 		case t := <-a.Receiver.traces:
 			a.Process(t)
-		case <-flushTicker.C:
-			p := model.AgentPayload{
-				HostName: a.conf.HostName,
-				Env:      a.conf.DefaultEnv,
-			}
-			var wg sync.WaitGroup
-			wg.Add(2)
-			go func() {
-				defer watchdog.LogOnPanic()
-				p.Stats = a.Concentrator.Flush()
-				wg.Done()
-			}()
-			go func() {
-				defer watchdog.LogOnPanic()
-				// Serializing both flushes, classic agent sampler and distributed sampler,
-				// in most cases only one will be used, so in mainstream case there should
-				// be no performance issue, only in transitionnal mode can both contain data.
-				p.Traces = a.ScoreEngine.Flush()
-				if a.PriorityEngine != nil {
-					p.Traces = append(p.Traces, a.PriorityEngine.Flush()...)
-				}
-				wg.Done()
-			}()
-
-			wg.Wait()
-			p.SetExtra(languageHeaderKey, a.Receiver.Languages())
-
-			a.Writer.InPayloads <- p
 		case <-watchdogTicker.C:
 			a.watchdog()
 		case <-a.exit:
 			log.Info("exiting")
 			close(a.Receiver.exit)
-			a.Writer.Stop()
-			a.ScoreEngine.Stop()
-			if a.PriorityEngine != nil {
-				a.PriorityEngine.Stop()
+			a.Concentrator.Stop()
+			a.TraceWriter.Stop()
+			a.StatsWriter.Stop()
+			a.ServiceWriter.Stop()
+			a.ScoreSampler.Stop()
+			if a.PrioritySampler != nil {
+				a.PrioritySampler.Stop()
 			}
 			return
 		}
