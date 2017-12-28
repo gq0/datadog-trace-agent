@@ -11,15 +11,16 @@ import (
 // ReceiverStats is used to store all the stats per tags.
 type ReceiverStats struct {
 	sync.RWMutex
-	Stats map[Tags]*tagStats
+	Stats map[Tags]*TagStats
 }
 
+// NewReceiverStats returns a new ReceiverStats
 func NewReceiverStats() *ReceiverStats {
-	return &ReceiverStats{sync.RWMutex{}, map[Tags]*tagStats{}}
+	return &ReceiverStats{sync.RWMutex{}, map[Tags]*TagStats{}}
 }
 
 // GetTagStats returns the struct in which the stats will be stored depending of their tags.
-func (rs *ReceiverStats) GetTagStats(tags Tags) *tagStats {
+func (rs *ReceiverStats) GetTagStats(tags Tags) *TagStats {
 	rs.Lock()
 	tagStats, ok := rs.Stats[tags]
 	if !ok {
@@ -41,6 +42,7 @@ func (rs *ReceiverStats) Acc(recent *ReceiverStats) {
 	recent.Unlock()
 }
 
+// Publish updates stats about per-tag stats
 func (rs *ReceiverStats) Publish() {
 	rs.RLock()
 	for _, tagStats := range rs.Stats {
@@ -49,6 +51,7 @@ func (rs *ReceiverStats) Publish() {
 	rs.RUnlock()
 }
 
+// Reset resets the ReceiverStats internal data
 func (rs *ReceiverStats) Reset() {
 	rs.Lock()
 	for key, tagStats := range rs.Stats {
@@ -81,22 +84,23 @@ func (rs *ReceiverStats) Strings() []string {
 	return strings
 }
 
-// tagStats is the struct used to associate the stats with their set of tags.
-type tagStats struct {
+// TagStats is the struct used to associate the stats with their set of tags.
+type TagStats struct {
 	Tags
 	Stats
 }
 
-func newTagStats(tags Tags) *tagStats {
-	return &tagStats{tags, Stats{}}
+func newTagStats(tags Tags) *TagStats {
+	return &TagStats{tags, Stats{}}
 }
 
-func (ts *tagStats) publish() {
+func (ts *TagStats) publish() {
 	// Atomically load the stats from ts
 	tracesReceived := atomic.LoadInt64(&ts.TracesReceived)
 	tracesDropped := atomic.LoadInt64(&ts.TracesDropped)
 	tracesFiltered := atomic.LoadInt64(&ts.TracesFiltered)
 	tracesPriorityNone := atomic.LoadInt64(&ts.TracesPriorityNone)
+	tracesPriorityNeg := atomic.LoadInt64(&ts.TracesPriorityNeg)
 	tracesPriority0 := atomic.LoadInt64(&ts.TracesPriority0)
 	tracesPriority1 := atomic.LoadInt64(&ts.TracesPriority1)
 	tracesPriority2 := atomic.LoadInt64(&ts.TracesPriority2)
@@ -115,6 +119,7 @@ func (ts *tagStats) publish() {
 	statsd.Client.Count("datadog.trace_agent.receiver.traces_dropped", tracesDropped, tags, 1)
 	statsd.Client.Count("datadog.trace_agent.receiver.traces_filtered", tracesFiltered, tags, 1)
 	statsd.Client.Count("datadog.trace_agent.receiver.traces_priority", tracesPriorityNone, append(tags, "priority:none"), 1)
+	statsd.Client.Count("datadog.trace_agent.receiver.traces_priority", tracesPriorityNeg, append(tags, "priority:neg"), 1)
 	statsd.Client.Count("datadog.trace_agent.receiver.traces_priority", tracesPriority0, append(tags, "priority:0"), 1)
 	statsd.Client.Count("datadog.trace_agent.receiver.traces_priority", tracesPriority1, append(tags, "priority:1"), 1)
 	statsd.Client.Count("datadog.trace_agent.receiver.traces_priority", tracesPriority2, append(tags, "priority:2"), 1)
@@ -137,6 +142,8 @@ type Stats struct {
 	TracesFiltered int64
 	// TracesPriorityNone is the number of traces with no sampling priority.
 	TracesPriorityNone int64
+	// TracesPriorityNeg is the number of traces with a negative sampling priority.
+	TracesPriorityNeg int64
 	// TracesPriority0 is the number of traces with sampling priority set to zero.
 	TracesPriority0 int64
 	// TracesPriority1 is the number of traces with sampling priority automatically set to 1.
@@ -162,6 +169,7 @@ func (s *Stats) update(recent Stats) {
 	atomic.AddInt64(&s.TracesDropped, recent.TracesDropped)
 	atomic.AddInt64(&s.TracesFiltered, recent.TracesFiltered)
 	atomic.AddInt64(&s.TracesPriorityNone, recent.TracesPriorityNone)
+	atomic.AddInt64(&s.TracesPriorityNeg, recent.TracesPriorityNeg)
 	atomic.AddInt64(&s.TracesPriority0, recent.TracesPriority0)
 	atomic.AddInt64(&s.TracesPriority1, recent.TracesPriority1)
 	atomic.AddInt64(&s.TracesPriority2, recent.TracesPriority2)
@@ -178,6 +186,7 @@ func (s *Stats) reset() {
 	atomic.StoreInt64(&s.TracesDropped, 0)
 	atomic.StoreInt64(&s.TracesFiltered, 0)
 	atomic.StoreInt64(&s.TracesPriorityNone, 0)
+	atomic.StoreInt64(&s.TracesPriorityNeg, 0)
 	atomic.StoreInt64(&s.TracesPriority0, 0)
 	atomic.StoreInt64(&s.TracesPriority1, 0)
 	atomic.StoreInt64(&s.TracesPriority2, 0)
