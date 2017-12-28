@@ -174,22 +174,22 @@ func (a *Agent) Process(t model.Trace) {
 	priority, ok := root.Metrics[samplingPriorityKey]
 	if a.conf.ScorePriority0Traces {
 		// Send traces to possibly several score engines.
-		if ok && a.PriorityEngine != nil {
+		if ok && a.PrioritySampler != nil {
 			// If Priority is defined, send to priority sampling, regardless of priority value.
 			// The sampler will keep or discard the trace, but we send everything so that it
 			// gets the big picture and can set the sampling rates accordingly.
-			samplers = append(samplers, a.PriorityEngine)
+			samplers = append(samplers, a.PrioritySampler)
 		}
 		if priority == 0 {
 			// Use score engine for traces with no priority or priority set to 0
-			samplers = append(samplers, a.ScoreEngine)
+			samplers = append(samplers, a.ScoreSampler)
 		}
 	} else {
 		// Send traces to one single engine, either Priority or Score
-		if ok && a.PriorityEngine != nil {
-			samplers = []*Sampler{a.PriorityEngine}
+		if ok && a.PrioritySampler != nil {
+			samplers = []*Sampler{a.PrioritySampler}
 		} else {
-			samplers = []*Sampler{a.ScoreEngine}
+			samplers = []*Sampler{a.ScoreSampler}
 		}
 	}
 
