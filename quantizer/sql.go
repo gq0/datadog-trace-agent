@@ -3,10 +3,108 @@ package quantizer
 import (
 	"bytes"
 	"errors"
+	"sort"
 
 	"github.com/DataDog/datadog-trace-agent/model"
 	log "github.com/cihub/seelog"
+	"github.com/vitessio/vitess/go/vt/sqlparser"
 )
+
+type byUpdateExprs sqlparser.UpdateExprs
+
+func (l byUpdateExprs) Len() int           { return len(l) }
+func (l byUpdateExprs) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
+func (l byUpdateExprs) Less(i, j int) bool { return updateExpr(l[i]) < updateExpr(l[j]) }
+
+func updateExpr(e *sqlparser.UpdateExpr) string {
+	cn := e.Name
+	if !cn.Qualifier.IsEmpty() {
+		if !cn.Qualifier.Qualifier.IsEmpty() {
+			return cn.Qualifier.Qualifier.String()
+		}
+		return cn.Qualifier.Name.String()
+	}
+	return cn.Name.String()
+}
+
+type bySelectExprs sqlparser.SelectExprs
+
+func (l bySelectExprs) Len() int           { return len(l) }
+func (l bySelectExprs) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
+func (l bySelectExprs) Less(i, j int) bool { return selectExpr(l[i]) < selectExpr(l[j]) }
+
+func selectExpr(e sqlparser.SelectExpr) string {
+	switch v := e.(type) {
+	case *sqlparser.AliasedExpr:
+		switch vv := v.Expr.(type) {
+		case *sqlparser.ColName:
+			return vv.Name.String()
+		default:
+			return sqlparser.String(vv)
+		}
+	case *sqlparser.StarExpr:
+		return "*"
+	default:
+		return sqlparser.String(e)
+	}
+}
+
+type visitor struct{}
+
+func (v *visitor) visit(node sqlparser.SQLNode) (kontinue bool, err error) {
+	switch v := node.(type) {
+	case *sqlparser.Select:
+		if len(v.SelectExprs) > 1 {
+			sort.Sort(bySelectExprs(v.SelectExprs))
+			v.SelectExprs = v.SelectExprs
+		}
+		return false, nil
+	case *sqlparser.Update:
+		if len(v.Exprs) > 1 {
+			sort.Sort(byUpdateExprs(v.Exprs))
+			v.Exprs = v.Exprs
+		}
+		return false, nil
+	case *sqlparser.Insert, *sqlparser.Delete, *sqlparser.DDL:
+		return false, nil
+	default:
+		return true, nil
+	}
+}
+
+func (v *visitor) nodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode) {
+	switch v := node.(type) {
+	case *sqlparser.BoolVal, *sqlparser.SQLVal, *sqlparser.NullVal:
+		buf.Buffer.WriteString("?")
+	case sqlparser.ValTuple:
+		buf.Buffer.WriteString("( ? )")
+	case sqlparser.Values:
+		buf.Buffer.WriteString("values ( ? )")
+	case *sqlparser.AliasedExpr:
+		buf.Myprintf("%v", v.Expr)
+	default:
+		v.Format(buf)
+	}
+}
+
+func Quantize2(span *model.Span) {
+	span.Resource = process(span.Resource)
+}
+
+func process(sql string) string {
+	root, err := sqlparser.Parse(sql)
+	if err != nil {
+		return sql // TODO(gbbr): handle it
+	}
+	v := &visitor{}
+	sqlparser.Walk(v.visit, root)
+	if root == nil {
+		return "<nil>"
+	}
+	buf := sqlparser.NewTrackedBuffer(v.nodeFormatter)
+	buf.Myprintf("%v", root)
+	return buf.String()
+}
 
 const (
 	sqlQueryTag      = "sql.query"
